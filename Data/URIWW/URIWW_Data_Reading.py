@@ -62,7 +62,11 @@ embaydf["MonitoringLocationIdentifier"]=embaydf["MonitoringLocationIdentifier"].
 embaydf.head()
 # -
 
+#Ensuring all temp is in C (output should be empty)
+embaydf.loc[(embaydf["Parameter #"]=="Temperature - 00011") & (embaydf["Unit"]!="C")]
+
+print(len(embaydf))
+embaydf=embaydf.loc[(embaydf["Parameter #"]=="Temperature - 00011") & (embaydf["Unit"]=="C")]
 print(len(embaydf))
 
-# +
-#embaydf.to_csv("URIWW.csv")
+embaydf.to_csv("URIWW_4_19_2023.csv")

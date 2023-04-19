@@ -82,7 +82,39 @@ for path in paths.values():
     
 for path in dirs.values():
     assert(os.path.isdir(path))
+
+
 # -
+
+#Function for creating the summer avg requires standardized labeling: "Station ID", "Date", "Temperature (C)"
+def aggregate_dataset(df):
+    
+    #Date handling
+    df["Date"]=pd.to_datetime(df["Date"])
+    df["Month"]=df["Date"].dt.month
+    df["Year"]=df["Date"].dt.year
+    df.dropna(subset="Date", inplace=True)
+
+    #Limiting to July and August
+    working=df.loc[(df["Month"]==7) | (df["Month"]==8)]
+    working=pd.DataFrame(working.groupby(["Station ID", "Year", "Month"])["Temperature (C)"].mean())
+    
+    #Only getting years with both months of data
+    working.reset_index(inplace=True)
+    keep=working.duplicated(subset=["Station ID", "Year"], keep=False)
+    working=working.loc[keep].copy(deep=True)
+    
+    #Meaning July and August
+    means=working.groupby(["Station ID", "Year"]).mean()
+    means.reset_index(inplace=True)
+    
+    #Re-adding Lat and Lon from input df
+    #Important to merge on both station ID and year because coords can change
+    means=means.merge(df[["Station ID", "Year", "Latitude","Longitude"]].drop_duplicates(["Station ID", "Year"]),
+                      how="left", on=["Station ID", "Year"])
+    
+    return(means)
+
 
 # # STS Data
 
@@ -115,34 +147,42 @@ discrete_counts.head()
 
 sts_cont=pd.read_csv(paths[2], index_col=0)
 
+#Renaming Columns
 sts_cont.rename(columns={"temp":"Temperature (C)"}, inplace=True)
 sts_cont.head()
 
-# Getting Months of July and August
-sts_cont["Date"]=pd.to_datetime(sts_cont["Date"])
-sts_cont["Month"]=sts_cont["Date"].dt.month
-sts_cont["Year"]=sts_cont["Date"].dt.year
-sts_cont=sts_cont.loc[(sts_cont["Month"]==7) | (sts_cont["Month"]==8)].copy(deep=True)
-sts_cont.head()
+cont_mean=aggregate_dataset(sts_cont)
+cont_mean.head()
 
 # +
-#Getting means by month
-cont_mean=sts_cont.groupby(["Station ID", "Year", "Month"]).mean()
-cont_mean.reset_index(level=-1, inplace=True)
+# # Handling Dates 
+# sts_cont["Date"]=pd.to_datetime(sts_cont["Date"])
+# sts_cont["Month"]=sts_cont["Date"].dt.month
+# sts_cont["Year"]=sts_cont["Date"].dt.year
 
-#Dropping missing according to Continuous Time Series
-cont_mean.loc['NWH-O-1B-L', 2019.0]=np.nan
-cont_mean.loc['EAB-O-2B-L', 2020.0]=np.nan
-cont_mean.dropna(subset="Temperature (C)", inplace=True)
+# #Getting only months of July and August
+# sts_cont=sts_cont.loc[(sts_cont["Month"]==7) | (sts_cont["Month"]==8)].copy(deep=True)
+# sts_cont.head()
 
-#Getting means by year
-cont_mean.reset_index(inplace=True)
-cont_mean=cont_mean.groupby(["Station ID", "Year"]).mean()
+# +
+# #Getting means by month
+# cont_mean=sts_cont.groupby(["Station ID", "Year", "Month"]).mean()
+# cont_mean.reset_index(level=-1, inplace=True)
+
+# #Dropping missing according to Continuous Time Series
+# cont_mean.loc['NWH-O-1B-L', 2019.0]=np.nan
+# cont_mean.loc['EAB-O-2B-L', 2020.0]=np.nan
+# cont_mean.dropna(subset="Temperature (C)", inplace=True)
+
+# #Getting means by year
+# cont_mean.reset_index(inplace=True)
+# cont_mean=cont_mean.groupby(["Station ID", "Year"]).mean()
+
+# +
+# #Resetting index
+# cont_mean.reset_index(inplace=True)
+# cont_mean.head()
 # -
-
-#Resetting index
-cont_mean.reset_index(inplace=True)
-cont_mean.head()
 
 #Tagging with org
 cont_mean["Organization"]="STS_Tier_II"
@@ -238,7 +278,7 @@ def temp_sampler(df, timeset, bins, sample_size, station, year):
 
 
 #continuous data in right format for testing
-datapoints=pd.read_csv("Data/STS Continuous Data/STS_Continuous_Data_Pre_Processed.csv", index_col=0)
+datapoints=pd.read_csv("Data/STS Continuous Data/STS_Continuous_Data_Pre_Processing.csv", index_col=0)
 datapoints["Time"]=pd.to_datetime(datapoints["Date Time (GMT-04:00)"]).dt.time.astype(str)
 datapoints["Year"]=pd.to_datetime(datapoints["Date Time (GMT-04:00)"]).dt.year
 datapoints.set_index("Time", inplace=True)
@@ -392,15 +432,15 @@ std_devs
 
 # Its pretty clear from the output above that this model overpredicts the standard error because it doesnt assume spaced out sampling, which is what the discrete sampling actually uses.
 
-# # Adding in HOBO Logger Data
+# # Finishing Processing of HOBO Data (this will be moved to its own notebook)
 
 # +
 #reading in mumford and beebe in from files
 beebe=pd.read_csv(paths[4], header=1, index_col=0)
 mum=pd.read_csv(paths[5], header=1, index_col=0)
 
-beebe.rename(columns={beebe_sensor: "temp", "Date Time, GMT-04:00":"Date"}, inplace=True)
-mum.rename(columns={mum_sensor: "temp", "Date Time, GMT-04:00":"Date"}, inplace=True)
+beebe.rename(columns={strings[1]: "temp", "Date Time, GMT-04:00":"Date"}, inplace=True)
+mum.rename(columns={strings[2]: "temp", "Date Time, GMT-04:00":"Date"}, inplace=True)
 
 beebe.Date=pd.to_datetime(beebe.Date)
 mum.Date=pd.to_datetime(mum.Date)
@@ -465,228 +505,58 @@ print(hobo_data['Hay Harbor'])
 hobo_data["Mumford Cove"]=mum
 hobo_data["Beebe Cove"]=beebe
 
-#Outputting HOBO Logger Data to Data Folder
-for name, df in hobo_data.items():
-    df.to_csv("Data/hobo_data_all_years/"+name+".csv")
-
-#Grouping by day
-daily_means={}
-for key, df in hobo_data.items():
-    working=df.copy(deep=True)
-    working["Date"]=working["Date"].dt.date
-    working=working.groupby("Date").mean()
-    daily_means[key]=working.reset_index()
-working.head()
-
-#Selecting only dates in July and August in Line with Niantic Study and getting averages for those months
-monthly_means={}
-for key, df in daily_means.items():
-    working=df.copy(deep=True)
-    working["Date"]=pd.to_datetime(working["Date"])
-    working["Month"]=working["Date"].dt.month
-    working["Year"]=working["Date"].dt.year
-    working=working.loc[(working["Month"]==7) | (working["Month"]==8)]
-    working=working.groupby(["Year", "Month"]).mean()
-    monthly_means[key]=working
-    print(working)
-
-# +
-#Get only stations and years with data for both months!
-# -
-
 #Reading in GPS coords from yaml (compared to original output as check)
 coords={}
 for key, value in yaml_coords.items():
     coords[key.replace("_", " ")]= tuple(value)
 coords
 
-hobo_mean=pd.DataFrame()
-for key, df in monthly_means.items():
-    working=df.groupby("Year").mean()
-    working["Location"]=key
-    working["coords"]= [coords[key]]*len(working)
-    hobo_mean=pd.concat([hobo_mean, working])
-hobo_mean["Latitude"]=hobo_mean["coords"].apply(lambda x: x[0])
-hobo_mean["Longitude"]=hobo_mean["coords"].apply(lambda x: x[1])
-hobo_mean.head()
+# +
+#Adding coords and aggregating data
+agg=pd.DataFrame()
 
-hobo_mean.reset_index(inplace=True)
-hobo_mean.head()
-
-#Tagging with org
-hobo_mean["Organization"]="EPA_FISM"
-
-# # Adding in Discrete STS Data
-
-#only keeping a year if it has a measurement at the station in both July and August (Niantic Methodology)
-sts_discrete["Month"]=pd.to_datetime(sts_discrete["Sample Date"]).dt.month
-sts_discrete["Year"]=pd.to_numeric(sts_discrete["Year"])
-grouped=sts_discrete.groupby(["Year", "Month","MonitoringLocationIdentifier"]).mean()
-grouped.reset_index(inplace=True)
-keep=grouped.duplicated(subset=["Year", "MonitoringLocationIdentifier"], keep=False)
-grouped.loc[~keep]
-
-print(len(grouped))
-grouped=grouped.loc[keep]
-print(len(grouped))
-
-discrete_mean=grouped.groupby(["Year", "MonitoringLocationIdentifier"]).mean()
-discrete_mean.reset_index(inplace=True)
-discrete_mean.rename(columns={"MonitoringLocationIdentifier":"Station ID", "Field Latitude (dec. deg.)": "Latitude", "Field Longitude (dec. deg.)":"Longitude", "Bottom Temperature (°C)":"Temperature (C)"}, inplace=True)
-discrete_mean.head()
-
-#Tagging with org
-discrete_mean["Organization"]="STS_Tier_I"
-
-
-# # Adding Discrete USGS data
-
-#Function for creating the summer avg requires standardized labeling: "Station ID", "Date", "Temperature (C)"
-def summer_avg(df):
-    
-    #Date handling
-    df["Date"]=pd.to_datetime(df["Date"])
-    df["Month"]=df["Date"].dt.month
-    df["Year"]=df["Date"].dt.year
-    df.dropna(subset="Date", inplace=True)
-
-    #Limiting to July and August
-    df=df.loc[(df["Month"]==7) | (df["Month"]==8)]
-    df=pd.DataFrame(df.groupby(["Station ID", "Year", "Month"])["Temperature (C)"].mean())
-    
-    #Only getting years with both months of data
-    df.reset_index(inplace=True)
-    keep=df.duplicated(subset=["Station ID", "Year"], keep=False)
-    df=df.loc[keep].copy(deep=True)
-    
-    #Meaning July and August
-    means=df.groupby(["Station ID", "Year"]).mean()
-
-    return(means)
-
-
-
-usgs=pd.read_csv("Data/WQP_merged_no_STS.csv", index_col=0)
-usgs.head()
-
-#Selecting only temperature and ensuring units are degrees C
-usgs=usgs.loc[usgs["CharacteristicName"]=="Temperature, water"].copy()
-usgs.loc[usgs["ResultMeasure/MeasureUnitCode"]!="deg C"]
+for key, df in hobo_data.items():
+    assert(list(df.columns).count("temp")==1)
+    assert(list(df.columns).count("Date")==1)
+    df["Latitude"]= coords[key][0]
+    df["Longitude"]= coords[key][1]
+    df["Station ID"]= key
+    agg=pd.concat([agg, df])
 
 # +
-#Renaming
-usgs.reset_index(inplace=True)
-rename_dict={"MonitoringLocationIdentifier":"Station ID", "LatitudeMeasure": "Latitude", "LongitudeMeasure":"Longitude", "ResultMeasureValue":"Temperature (C)", "ActivityStartDate":"Date"}
-usgs.rename(columns=rename_dict, inplace=True)
+#Outputting HOBO Logger Data to Data Folder
 
-#Selecting only relevant columns
-usgs=usgs[list(rename_dict.values())].copy()
-usgs.head()
+agg.to_csv("Data/hobo_data_all_years/hobo_data_agg.csv")
 # -
 
-usgs["Temperature (C)"].describe()
+# # Finishing Dominion Processing
 
-#Dates
-usgs["Month"]=pd.to_datetime(usgs["Date"]).dt.month
-usgs["Year"]=pd.to_datetime(usgs["Date"]).dt.year
-usgs
-
-usgs_means=summer_avg(usgs)
-usgs_means
-
-#Merging coords
-usgs_means.reset_index(inplace=True)
-usgs_means=usgs_means.merge(usgs[["Station ID","Latitude","Longitude"]].drop_duplicates("Station ID"), how="left", on="Station ID")
-usgs_means.head()
-
-#Tagging with org
-usgs_means["Organization"]="USGS_Discrete"
-
-# # Adding URI data
-
-uri=pd.read_csv("Data/URIWW.csv", index_col=0)
-uri.head()
-
-#Selecting only temperature and ensuring units are degrees C
-uri=uri.loc[uri["Parameter #"]=="Temperature - 00011"].copy()
-uri.loc[uri["Unit"]!="C"]
-
-# +
-#Renaming
-uri.reset_index(inplace=True)
-rename_dict={"MonitoringLocationIdentifier":"Station ID", "LAT_DD": "Latitude", "LON_DD":"Longitude", "Concentration":"Temperature (C)", "Date of Sample":"Date"}
-uri.rename(columns=rename_dict, inplace=True)
-
-#Selecting only relevant columns
-uri=uri[list(rename_dict.values())].copy()
-uri.head()
-# -
-
-#Dates
-uri["Month"]=pd.to_datetime(uri["Date"]).dt.month
-uri["Year"]=pd.to_datetime(uri["Date"]).dt.year
-uri
-
-uri["Temperature (C)"].describe()
-
-#Checking in on suspicious min values
-uri.loc[(uri["Month"]==7) | (uri["Month"]==8)].sort_values("Temperature (C)").head(50)
-
-#Dropping clear outlier
-uri.drop(567, axis=0, inplace=True)
-print(len(uri))
-
-uri_means=summer_avg(uri)
-uri_means
-
-#Merging coords
-uri_means.reset_index(inplace=True)
-uri_means=uri_means.merge(uri[["Station ID","Latitude","Longitude"]].drop_duplicates("Station ID"), how="left", on="Station ID")
-uri_means.head()
-
-#Tagging with org
-uri_means["Organization"]="URI"
-
-# # Dominion
-
-path=dirs[3]
-os.path.isdir(path)
-
-dom = pd.read_csv(path + "C_and_NB_data.csv")
+dom = pd.read_csv("Data/Dominion Energy/C_and_NB_data.csv")
+dom.rename(columns={"Station":"Station ID"}, inplace=True)
 dom.drop(0, axis=0, inplace=True)
 dom.head()
 
-#Renaming columns
-dom.reset_index(inplace=True)
-dom.rename(columns={"Station":"Station ID", "Bot. Temp.":"Temperature (C)"}, inplace=True)
-dom.head()
-
-dom_means=summer_avg(dom)
-dom_means.head()
-
-#lat and lon coords from (Dashboard.ipynb in this folder)
+#lat and lon coords from YAML (these need to be checked)
 dom_coords=pd.DataFrame(index=["C", "NB"], columns=["Latitude", "Longitude"])
 dom_coords.loc["C"] = np.array(yaml_coords["Dominion_C"])
 dom_coords.loc["NB"] = np.array(yaml_coords["Dominion_NB"])
 dom_coords.index.name="Station ID"
 dom_coords
 
+dom_coords.reset_index()
+
 #Merging coords
-dom_means.reset_index(inplace=True)
-dom_means=dom_means.merge(dom_coords, how="left", on="Station ID")
-dom_means.head()
+dom=dom.merge(dom_coords.reset_index(), how="left", on="Station ID")
+dom.head()
 
-#Tagging with org
-dom_means["Organization"]="Dominion"
+#Outputting
+dom.to_csv("Data/Dominion Energy/C_and_NB_data_with_coords.csv")
 
-# # Mystic River
-
-path='Data/Mystic River/'
-os.path.isdir(path)
+# # Finish Mystic Processing
 
 # +
 #Reading in file and simplifiying site no
-mystic_agg = pd.read_csv(path + "agg_fully_processed.csv", index_col=0)
+mystic_agg = pd.read_csv("Data/Mystic River/agg_fully_processed.csv", index_col=0)
 
 mystic_agg["site_no"]=mystic_agg["site_no"].str.replace("MYSTIC HARBOR", "USGS")
 mystic_agg["site_no"]=mystic_agg["site_no"].str.replace("MYSTIC RIVER", "USGS")
@@ -694,43 +564,106 @@ mystic_agg["site_no"]=mystic_agg["site_no"].str.replace(" ", "_")
 mystic_agg.head()
 # -
 
+# The code below implies that "Temperature" is a suitable proxy for "Temperature_BOTTOM". This should be checked
+
 #Fusing Temperature w/ bottom temperature (with priority to bottom temp. for consistency w/ other datasets)
 mystic_agg.loc[~mystic_agg["Temperature_BOTTOM"].isna(), "Temperature"]=mystic_agg.loc[~mystic_agg["Temperature_BOTTOM"].isna(), "Temperature_BOTTOM"]
 mystic_agg.head()
 
-#Renaming columns
-mystic_agg.rename(columns={"site_no":"Station ID", "Temperature": "Temperature (C)", "datetime":"Date"}, inplace=True)
-mystic_agg.head()
 
-mystic_means=summer_avg(mystic_agg)
-mystic_means
+#Saving
+mystic_agg.to_csv("Data/Mystic River/agg_fully_processed_temp_and_bottom_temp.csv")
 
-#Re-adding coords
-mystic_means=mystic_means.reset_index().merge(mystic_agg[["Station ID", "Latitude", "Longitude"]].drop_duplicates(), how="left", on="Station ID")
-mystic_means
-
-#Tagging with org
-mystic_means["Organization"]="USGS_Cont"
-
-# # Aggregating means
-
-#cont renaming
-cont_mean.rename(columns={"temp":"Temperature (C)"}, inplace=True)
-
-# STS discrete, mystic, and dominion are already in the proper format
-
-hobo_mean.rename(columns={"temp":"Temperature (C)", "Location":"Station ID"}, inplace=True)
-hobo_mean["Year"]=pd.to_numeric(hobo_mean["Year"])
-
-agg_summer_means=pd.concat([cont_mean, discrete_mean, hobo_mean, mystic_means, dom_means, usgs_means, uri_means], axis=0)
-agg_summer_means.tail()
-
-agg_summer_means.drop("coords", axis=1, inplace=True)
-agg_summer_means.head()
+# # Getting aggregates of all data 
 
 # +
-# agg_summer_means.to_csv("Data/agg_summer_means.csv")
+#Desired output names (order matters)
+#These should match the input of the function aggregate_dataset
+output_names = ("Date",
+"Station ID",
+"Latitude",
+"Longitude",
+"Temperature (C)")
+
+#List of organizations to use
+organization_names=["EPA_FISM",
+                    "STS_Tier_II",
+                    "STS_Tier_I",
+                    "USGS_Discrete",
+                    "URI",
+                    "Dominion",
+                    "USGS_Cont"]
+
+#Input names for above outputs as dictionary of ordered pairs
+#Dep. variable(s) at end for flexibility
+#EPA_FISM is used to refer to hobo logger data
+#This keys in this list also serve as a list of organizations and should match the paths below
+input_names={"EPA_FISM":("Date", "Station ID", "Latitude", "Longitude",  "temp"), 
+             "STS_Tier_II": ("Date", "Station ID", "Latitude", "Longitude", "temp"),
+             "STS_Tier_I": ("Sample Date", "MonitoringLocationIdentifier", "Latitude", "Longitude", "Bottom Temperature (°C)"),
+             "USGS_Discrete": ("ActivityStartDate", "MonitoringLocationIdentifier", "LatitudeMeasure", "LongitudeMeasure", "ResultMeasureValue"),
+             "URI": ("Date of Sample", "MonitoringLocationIdentifier", "LAT_DD", "LON_DD", "Concentration"),
+             "Dominion": ("Date", "Station", "Latitude", "Longitude", "Bot. Temp."),
+             "USGS_Cont": ("datetime", "site_no", "Latitude", "Longitude", "Temperature"),   
+         }
+assert(list(input_names.keys())==organization_names)
+
+#All these paths are in the project repo and thus don't need to be stored on config.yaml
+organization_paths={'EPA_FISM':"Data/hobo_data_all_years/hobo_data_agg.csv",
+                    'STS_Tier_II':"Data/STS Continuous Data/Interpolated_STS_Continuous_Data.csv",
+                    'STS_Tier_I':"Data/STS Discrete Data/STS_Discrete.csv",
+                    'USGS_Discrete':"Data/WQP/WQP_merged_no_STS_4_19_2023.csv",
+                    'URI': "Data/URIWW/URIWW_4_19_2023.csv",
+                    'Dominion': "Data/Dominion Energy/C_and_NB_data_with_coords.csv",
+                    'USGS_Cont': "Data/Mystic River/agg_fully_processed_temp_and_bottom_temp.csv"
+                   }
+
+assert(list(organization_paths.keys())==organization_names)
+# +
+#Loop of reading, renaming, dropping nas, and running data through aggregate_dataset function
+aggregated={}
+
+for org in organization_names:
+    #Reading
+    working = pd.read_csv(organization_paths[org])
+    
+    #Renaming
+    working.rename(columns=dict(zip(input_names[org], output_names)), inplace=True)
+    
+    #Testing to make sure all columns are present
+    for col in output_names:
+        assert(list(working.columns).count(col)==1), org +  " columns count of " + col + " != 1"
+
+    
+    #Dropping nas
+    print(len(working))
+    working.dropna(subset=list(output_names), inplace=True)
+    print(len(working))
+    
+    aggregated[org]=aggregate_dataset(working)
+    
+    aggregated[org]["Organization"]=org
+        
 # -
+
+
+#URI
+aggregated["URI"].groupby(["Year"]).count()
+
+#USGS_Discrete
+aggregated["USGS_Discrete"].groupby(["Station ID", "Year"]).count()
+
+#USGS_Cont
+aggregated["USGS_Cont"].groupby(["Year"]).count()
+
+# +
+agg_summer_means=pd.concat(list(aggregated.values()), axis=0)
+
+#Checking to make sure aggregate_datasets function works
+assert(np.all(agg_summer_means["Month"].values==7.5))
+# -
+
+agg_summer_means.to_csv("Data/agg_summer_means_4_19_2023.csv")
 
 # # Comparing to IDW of CTDEEP
 
@@ -757,11 +690,8 @@ def interpolate_means(summer_means):
     return(output)
 
 
-
-# # Graphing all Errors in 2d
-
 #First continuous data alone
-cont_mean_error = interpolate_means(cont_mean.loc[cont_mean["Year"]>2010])
+cont_mean_error = interpolate_means(aggregated["STS_Tier_II"].loc[aggregated["STS_Tier_II"]["Year"]>2010])
 cont_mean_error.groupby("Year")["Bias"].describe()
 
 #Now all data
@@ -769,6 +699,8 @@ agg_mean_error=interpolate_means(agg_summer_means.loc[agg_summer_means["Year"]>2
 agg_mean_error
 
 agg_mean_error.groupby(["Year"])["Bias"].describe().loc[2019:]
+
+# # Graphing all Errors in 2d
 
 from matplotlib import colors
 for year in np.arange(2015, 2023):
@@ -796,4 +728,5 @@ ax.set_title("All Year Composite")
     #ax.annotate(idx, (row['Longitude'], row['Latitude']))
 plt.show()
 
-agg_mean_error.to_csv("Data/interpolation_errors_4_5_2023.csv")
+# +
+#agg_mean_error.to_csv("Data/interpolation_errors_4_5_2023.csv")
