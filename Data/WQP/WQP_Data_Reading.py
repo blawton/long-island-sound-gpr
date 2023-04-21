@@ -65,7 +65,7 @@ embaydf.head()
 
 #Outputting non-STS Data
 print(len(embaydf))
-embdaydf=embaydf.loc[embaydf["OrganizationIdentifier"]!="CFE-STS"].copy()
+embaydf=embaydf.loc[embaydf["OrganizationIdentifier"]!="CFE-STS"].copy()
 print(len(embaydf))
 
 #Ensuring all temp is in C (output should be empty)
@@ -75,4 +75,4 @@ print(len(embaydf))
 embaydf=embaydf.loc[(embaydf["CharacteristicName"]=="Temperature, water") & (embaydf["ResultMeasure/MeasureUnitCode"]=="deg C")]
 print(len(embaydf))
 
-embaydf.to_csv("WQP_merged_no_STS_4_19_2023.csv")
+embaydf.to_csv("WQP_merged_no_STS_4_21_2023.csv")
