@@ -11,11 +11,17 @@ from IPython import display
 import time
 from sklearn.neighbors import DistanceMetric
 from math import radians
+import os
 
 # This notebook needs a proper readme
 
 pd.options.display.max_rows=150
 pd.options.display.max_columns=150
+
+#Working dir
+if(os.path.basename(os.getcwd())[0:18]!="Data Visualization"):
+    os.chdir("..")
+assert(os.path.basename(os.getcwd())[0:18]=="Data Visualization")
 
 #Global Params
 dist = DistanceMetric.get_metric('haversine')
@@ -82,39 +88,7 @@ for path in paths.values():
     
 for path in dirs.values():
     assert(os.path.isdir(path))
-
-
 # -
-
-#Function for creating the summer avg requires standardized labeling: "Station ID", "Date", "Temperature (C)"
-def aggregate_dataset(df):
-    
-    #Date handling
-    df["Date"]=pd.to_datetime(df["Date"])
-    df["Month"]=df["Date"].dt.month
-    df["Year"]=df["Date"].dt.year
-    df.dropna(subset="Date", inplace=True)
-
-    #Limiting to July and August
-    working=df.loc[(df["Month"]==7) | (df["Month"]==8)]
-    working=pd.DataFrame(working.groupby(["Station ID", "Year", "Month"])["Temperature (C)"].mean())
-    
-    #Only getting years with both months of data
-    working.reset_index(inplace=True)
-    keep=working.duplicated(subset=["Station ID", "Year"], keep=False)
-    working=working.loc[keep].copy(deep=True)
-    
-    #Meaning July and August
-    means=working.groupby(["Station ID", "Year"]).mean()
-    means.reset_index(inplace=True)
-    
-    #Re-adding Lat and Lon from input df
-    #Important to merge on both station ID and year because coords can change
-    means=means.merge(df[["Station ID", "Year", "Latitude","Longitude"]].drop_duplicates(["Station ID", "Year"]),
-                      how="left", on=["Station ID", "Year"])
-    
-    return(means)
-
 
 # # STS Data
 
@@ -576,6 +550,9 @@ mystic_agg.to_csv("Data/Mystic River/agg_fully_processed_temp_and_bottom_temp.cs
 
 # # Getting aggregates of all data 
 
+#Function for creating the summer avg requires standardized labeling: "Station ID", "Date", "Temperature (C)"
+from Functions import aggregate_dataset as agg
+
 # +
 #Desired output names (order matters)
 #These should match the input of the function aggregate_dataset
@@ -640,7 +617,7 @@ for org in organization_names:
     working.dropna(subset=list(output_names), inplace=True)
     print(len(working))
     
-    aggregated[org]=aggregate_dataset(working)
+    aggregated[org]=agg.daily(working)
     
     aggregated[org]["Organization"]=org
         
@@ -659,11 +636,13 @@ aggregated["USGS_Cont"].groupby(["Year"]).count()
 # +
 agg_summer_means=pd.concat(list(aggregated.values()), axis=0)
 
-#Checking to make sure aggregate_datasets function works
-assert(np.all(agg_summer_means["Month"].values==7.5))
+# #Checking to make sure aggregate_datasets function works
+# assert(np.all(agg_summer_means["Month"].values==7.5))
 # -
 
-agg_summer_means.to_csv("Data/agg_summer_means_4_21_2023_II.csv")
+agg_summer_means
+
+agg_summer_means.to_csv("Data/agg_summer_means_daily.csv")
 
 # # Comparing to IDW of CTDEEP
 

@@ -7,7 +7,7 @@ from sklearn.gaussian_process.kernels import RationalQuadratic
 from sklearn.gaussian_process.kernels import WhiteKernel
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
-plt.rcParams["figure.figsize"]=(20, 20)
+import os
 
 from osgeo import gdal
 import numpy as np
@@ -47,6 +47,11 @@ pd.set_option('display.max_rows', 100)
 #
 # Use nearest interpolation instead of manually adjusting bits to avoid boundary line
 
+#Working dir
+if(os.path.basename(os.getcwd())[0:18]!="Data Visualization"):
+    os.chdir("..")
+assert(os.path.basename(os.getcwd())[0:18]=="Data Visualization")
+
 # +
 #Loading paths config.yml
 import yaml
@@ -69,155 +74,43 @@ paths[1]=config["Workbook_path1"]
 #CSVs
 
 #Aggregate Data of All Organizations for Testing
-paths[2]=config["Workbook_path2"]
+paths[2]="Data/Space_and_time_agg/agg_summer_means_daily.csv"
+
+#All stations/years with coastal features to merge with daily means
+#no need to re-calc
+paths[3]="Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
 
 #Ouput for Aggregate Data above but with embay_dist attached
-outputs[1]=config["Workbook_output1"]
+outputs[1]="Data/Space_and_time_agg/agg_daily_coastal_features_4_22_2023.csv"
 
 for path in paths.values():
-    assert(os.path.exists(path))
-    
-for path in outputs.values():
     assert(os.path.exists(path))
 # -
 
 # # Preparing and Testing Data
 
-# ## Importing coastal features
-
-#Using the updated file without points removed
-embay_dist = gdal.Open(paths[1])
-
-gt=embay_dist.GetGeoTransform()
-gt
-
-proj=embay_dist.GetProjection()
-proj
-
-band=embay_dist.GetRasterBand(1)
-array=band.ReadAsArray()
-
-pixelwidth=gt[1]
-pixelheight=-gt[5]
-pixelheight
-
-xOrigin = gt[0]
-yOrigin = gt[3]
-
-cols = embay_dist.RasterXSize
-rows = embay_dist.RasterYSize
-cols
-
-# ## Appending coastal distance to data
-
+#Reading in time data
 df=pd.read_csv(paths[2], index_col=0)
-df
+df.head()
 
-# #Drops URI and USGS data (to avoid updates implemented in 2.2)
-# df=df.loc[(df["Organization"]!="URI") & (df["Organization"]!="USGS_Discrete")].copy()
-pd.unique(df["Organization"])
+#Reading in data to merge with "time" data
+to_merge=pd.read_csv(paths[3], index_col=0)
+to_merge.head()
 
-#Checking on longitude ranges
-max(df["Longitude"])-min(df["Longitude"])
+df=df.merge(to_merge[["Station ID", "Year", 
+                     "xPixel", "yPixel", "embay_dist"]], how="left",
+           on = ["Station ID", "Year"])
+df.head()
 
-df["xPixel"]=((df["Longitude"] - xOrigin) / pixelwidth).astype(int)
-df["yPixel"]=(-(df["Latitude"] - yOrigin) / pixelheight).astype(int)
+#Proportion of datavnot geotagged before
+#should be minimal and can be dropped for now
+print(len(df.loc[df["embay_dist"].isna(), "Station ID"])/len(df))
+print(len(df))
+df=df.loc[~df["embay_dist"].isna()].copy()
+print(len(df))
 
-# +
-# #Making sure new STS data is included
-# df.loc[df["Year"]==2021]
-
-# +
-# #Fixing stations on the boundary line (only within Eastern Sound Window for now)
-
-# #NIR-I-1B-L
-# df.loc[df["Station ID"]=="NIR-I-1B-L", "xPixel"]-=10
-# #CFE-STS-NIR-O-06
-# df.loc[df["Station ID"]=="CFE-STS-NIR-O-06", "xPixel"]+=10
-# #CFE-STS-NIR-O-08
-# df.loc[df["Station ID"]=="CFE-STS-NIR-O-08", "xPixel"]-=5
-# #CFE-STS-CTR-04
-# df.loc[df["Station ID"]=="CFE-STS-CTR-04", "xPixel"]+=10
-# #USGS_AT_SAFE_HARBOR_MARINA
-# df.loc[df["Station ID"]=="USGS_AT_SAFE_HARBOR_MARINA", "xPixel"]-=5
-# -
-
-df["embay_dist"]=df.apply(lambda x: array[x["yPixel"], x["xPixel"]], axis=1)
-
-#Getting range of distances in df to ensure its similar to masked
-max(df["embay_dist"])-min(df["embay_dist"])
-
-# +
-#Getting locations where dist is null or 0
-print(pd.unique(df.loc[df["embay_dist"].isna(), "Station ID"]))
-
-pd.unique(df.loc[df["embay_dist"]==0, "Station ID"])
-# -
-
-# ## Interpolating Stations caught on Coastal Boundary
-
-nonzero_ind=np.argwhere(array!=0)
-nonzero_ind.shape
-nonzero_ind
-
-nonzero_values = [array[nonzero_ind[i, 0], nonzero_ind[i, 1]] for i in np.arange(nonzero_ind.shape[0])]
-nonzero_values
-
-interp =  NearestNDInterpolator(nonzero_ind, nonzero_values)
-
-zeroes = df.loc[df["embay_dist"]==0]
-df.loc[df["embay_dist"]==0, "embay_dist"]=interp(zeroes["yPixel"], zeroes["xPixel"])
-df.loc[df["embay_dist"]==0]
-
-#Getting range of distances in df to ensure its similar to masked
-max(df["embay_dist"])-min(df["embay_dist"])
-
-#Displaying figure along with all locations
-plt.figure()
-plt.imshow(array)
-working=df
-plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
-plt.show()
-
-#Fixing East Beach and Barleyfield Cove (These actually should have embay_dist=0)
-df.loc[df["Station ID"]=="East Beach", "embay_dist"] = 0
-df.loc[df["Station ID"]=="Barleyfield Cove", "embay_dist"] = 0
-
-#Checking on stations where embay_dist=0
-plt.figure()
-plt.imshow(array)
-working=df.loc[df["Year"]==2019]
-plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
-plt.show()
-
-# ### Checking on stations in each year
-
-#Checking on stations where embay_dist=0
-plt.figure()
-plt.imshow(array)
-working=df.loc[df["Year"]==2019]
-plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
-plt.show()
-
-#Checking on stations where embay_dist=0
-plt.figure()
-plt.imshow(array)
-working=df.loc[df["Year"]==2020]
-plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
-plt.show()
-
-#Checking on stations where embay_dist=0
-plt.figure()
-plt.imshow(array)
-working=df.loc[df["Year"]==2021]
-plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
-plt.show()
-
-print(array.shape)
-
-# +
-#df.to_csv(outputs[1])
-# -
+#Outputting
+df.to_csv(outputs[1])
 
 # ## Linear Regressions
 
@@ -271,9 +164,11 @@ best_fit(df, "Longitude", "Temperature (C)")
 
 # # GPR with Noise
 
-# 1. To begin with, we assume that all our data has the same amount of noise as the discrete data, whose variance/std error was modeled in the Open Sound Embayment Test Workbook (std ~= 1.2, var ~=1.44)
+# 1. In the time version of this notebook, we will begin modelling very little noise, assuming all data has the same noise used for the continuous data in the last version of this notebook (var=.1)
 
-# 2. Then we assume some minimal amount of noise on the continuous data (var = .1) for continuous data to account for time series gaps, and var as above for discrete stations
+# 2. We can test different noise parameters for what is now cross validation on rmse prediction of time series
+
+# 3. The "philosophy" of adding in time as a predictor is to change as little as possible in the code, while making use of the new "Day" variable from the new input.
 
 # ## Preparing Data
 
@@ -281,7 +176,7 @@ best_fit(df, "Longitude", "Temperature (C)")
 
 #Dropping nas
 print(len(df))
-df.dropna(subset=["Station ID", "Longitude", "Latitude", "Temperature (C)", "Organization"], inplace=True)
+df.dropna(subset=["Station ID", "Longitude", "Latitude", "Day", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
 
 #Getting list of continuous station IDs for testing

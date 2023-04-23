@@ -527,13 +527,17 @@ stride=2
 
 model_output(discrete_error, cont_error, year, stride, fixed=False) 
 
-# ## 2021 (contains additional testing)
+# ## 2021
 
 #Params
 discrete_error=1.44
 cont_error=.1
 year=2021
 stride=2
+
+model_output(discrete_error, cont_error, year, stride, fixed=False) 
+
+# ## 2021 Additional testing
 
 year_data=df.loc[df["Year"]="Year"]
 
