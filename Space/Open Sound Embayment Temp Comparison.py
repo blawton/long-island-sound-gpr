@@ -87,39 +87,7 @@ for path in paths.values():
     
 for path in dirs.values():
     assert(os.path.isdir(path))
-
-
 # -
-
-#Function for creating the summer avg requires standardized labeling: "Station ID", "Date", "Temperature (C)"
-def aggregate_dataset(df):
-    
-    #Date handling
-    df["Date"]=pd.to_datetime(df["Date"])
-    df["Month"]=df["Date"].dt.month
-    df["Year"]=df["Date"].dt.year
-    df.dropna(subset="Date", inplace=True)
-
-    #Limiting to July and August
-    working=df.loc[(df["Month"]==7) | (df["Month"]==8)]
-    working=pd.DataFrame(working.groupby(["Station ID", "Year", "Month"])["Temperature (C)"].mean())
-    
-    #Only getting years with both months of data
-    working.reset_index(inplace=True)
-    keep=working.duplicated(subset=["Station ID", "Year"], keep=False)
-    working=working.loc[keep].copy(deep=True)
-    
-    #Meaning July and August
-    means=working.groupby(["Station ID", "Year"]).mean()
-    means.reset_index(inplace=True)
-    
-    #Re-adding Lat and Lon from input df
-    #Important to merge on both station ID and year because coords can change
-    means=means.merge(df[["Station ID", "Year", "Latitude","Longitude"]].drop_duplicates(["Station ID", "Year"]),
-                      how="left", on=["Station ID", "Year"])
-    
-    return(means)
-
 
 # # STS Data
 
@@ -579,100 +547,12 @@ mystic_agg.head()
 #Saving
 mystic_agg.to_csv("Data/Mystic River/agg_fully_processed_temp_and_bottom_temp.csv")
 
-# # Getting aggregates of all data 
-
-# +
-#Desired output names (order matters)
-#These should match the input of the function aggregate_dataset
-output_names = ("Date",
-"Station ID",
-"Latitude",
-"Longitude",
-"Temperature (C)")
-
-#List of organizations to use
-organization_names=["EPA_FISM",
-                    "STS_Tier_II",
-                    "STS_Tier_I",
-                    "USGS_Discrete",
-                    "URI",
-                    "Dominion",
-                    "USGS_Cont"]
-
-#Input names for above outputs as dictionary of ordered pairs
-#Dep. variable(s) at end for flexibility
-#EPA_FISM is used to refer to hobo logger data
-#This keys in this list also serve as a list of organizations and should match the paths below
-input_names={"EPA_FISM":("Date", "Station ID", "Latitude", "Longitude",  "temp"), 
-             "STS_Tier_II": ("Date", "Station ID", "Latitude", "Longitude", "temp"),
-             "STS_Tier_I": ("Sample Date", "MonitoringLocationIdentifier", "Latitude", "Longitude", "Bottom Temperature (°C)"),
-             "USGS_Discrete": ("ActivityStartDate", "MonitoringLocationIdentifier", "LatitudeMeasure", "LongitudeMeasure", "ResultMeasureValue"),
-             "URI": ("Date of Sample", "MonitoringLocationIdentifier", "LAT_DD", "LON_DD", "Concentration"),
-             "Dominion": ("Date", "Station", "Latitude", "Longitude", "Bot. Temp."),
-             "USGS_Cont": ("datetime", "site_no", "Latitude", "Longitude", "Temperature"),   
-         }
-assert(list(input_names.keys())==organization_names)
-
-#All these paths are in the project repo and thus don't need to be stored on config.yaml
-organization_paths={'EPA_FISM':"Data/hobo_data_all_years/hobo_data_agg.csv",
-                    'STS_Tier_II':"Data/STS Continuous Data/Interpolated_STS_Continuous_Data_4_12_2023.csv",
-                    'STS_Tier_I':"Data/STS Discrete Data/STS_Discrete_4_13_2023.csv",
-                    'USGS_Discrete':"Data/WQP/WQP_merged_no_STS_4_21_2023.csv",
-                    'URI': "Data/URIWW/URIWW_4_19_2023.csv",
-                    'Dominion': "Data/Dominion Energy/C_and_NB_data_with_coords.csv",
-                    'USGS_Cont': "Data/Mystic River/agg_fully_processed_temp_and_bottom_temp.csv"
-                   }
-for path in organization_paths.values(): assert(os.path.exists(path))
-assert(list(organization_paths.keys())==organization_names)
-# +
-#Loop of reading, renaming, dropping nas, and running data through aggregate_dataset function
-aggregated={}
-
-for org in organization_names:
-    #Reading
-    working = pd.read_csv(organization_paths[org])
-    
-    #Renaming
-    working.rename(columns=dict(zip(input_names[org], output_names)), inplace=True)
-    
-    #Testing to make sure all columns are present
-    for col in output_names:
-        assert(list(working.columns).count(col)==1), org +  " columns count of " + col + " != 1"
-
-    
-    #Dropping nas
-    print(len(working))
-    working.dropna(subset=list(output_names), inplace=True)
-    print(len(working))
-    
-    aggregated[org]=aggregate_dataset(working)
-    
-    aggregated[org]["Organization"]=org
-        
-# -
-
-
-#URI
-aggregated["URI"].groupby(["Year"]).count()
-
-#USGS_Discrete
-aggregated["USGS_Discrete"].groupby(["Station ID", "Year"]).count()
-
-#USGS_Cont
-aggregated["USGS_Cont"].groupby(["Year"]).count()
-
-# +
-agg_summer_means=pd.concat(list(aggregated.values()), axis=0)
-
-#Checking to make sure aggregate_datasets function works
-assert(np.all(agg_summer_means["Month"].values==7.5))
-# -
-
-agg_summer_means.to_csv("Data/agg_summer_means_4_21_2023_II.csv")
-
-# # Comparing to IDW of CTDEEP
+# # Comparing summer means to IDW of CTDEEP
 
 # This Section has now been updated to use 2021 data (as of April 5, 2023)
+
+agg_summer_means=pd.read_csv("Data/Space_agg/agg_summer_means_4_21_2023_II.csv", index_col=0)
+agg_summer_means
 
 from Data import inverse_distance_weighter as idw
 
