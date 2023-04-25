@@ -5,9 +5,13 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
 from sklearn.gaussian_process.kernels import RationalQuadratic
 from sklearn.gaussian_process.kernels import WhiteKernel
+from sklearn.model_selection import cross_validate
+from sklearn.model_selection import GroupKFold
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import os
+import datetime
+import time
 
 from osgeo import gdal
 import numpy as np
@@ -16,8 +20,6 @@ from scipy.interpolate import NearestNDInterpolator
 
 pd.set_option('display.max_columns', 50)
 pd.set_option('display.max_rows', 100)
-
-# ENSURE STATION ID IS UNIQUE FOR IMPORTED SUMMER MEANS
 
 # __v_2__
 
@@ -87,11 +89,39 @@ for path in paths.values():
     assert(os.path.exists(path))
 # -
 
-# # Preparing and Testing Data
+# 1. This notebook uses cross validation where train and test sets are chosen based on stations, which allows the estimation of CV-error reconstructing entire time series, not just filling in existing time series. The dropping of data not given an embay_dist for the summer average below (which may be temporary) ensures that all time series are interpolatable, so the interesting question is recreating an entirely missing time series (partial reconstruction can be assessed seperately).
+#
+#
+# 2. In theory, alpha values still differ between continuous and discrete stations, but this time less so, because the discrete variation is just the variation that could be seen within one day. On top of this, there's a better arguement that the error between discrete stations is uncorrelated. However, in practice, to simplify the use of scikit's cross-validation function, we use a uniform alpha value (double the previous continuous alpha from Space model) to begin with.
+#
+#
+# 3. (NOTE) "df" is the overall dataset, and remains a global variable throughout the duration of the notebook
+
+# +
+#Global Params
+
+folds=5
+
+station_var=["Station ID"]
+
+ind_var=["Longitude", "Latitude", "Day", "embay_dist"]
+
+dep_var = ["Temperature (C)"]
+
+predictors=len(ind_var)
+
+noise_alpha=.2
+# -
+
+# # Preparing Data
 
 #Reading in time data
 df=pd.read_csv(paths[2], index_col=0)
 df.head()
+
+#Ensuring no reuse of station ID between orgs
+assert(len(df.drop_duplicates(subset=["Station ID"]))==len(df.drop_duplicates(subset=["Station ID", "Organization"])))
+
 
 #Reading in data to merge with "time" data
 to_merge=pd.read_csv(paths[3], index_col=0)
@@ -102,17 +132,183 @@ df=df.merge(to_merge[["Station ID", "Year",
            on = ["Station ID", "Year"])
 df.head()
 
-#Proportion of datavnot geotagged before
+#Proportion of data not geotagged before
 #should be minimal and can be dropped for now
 print(len(df.loc[df["embay_dist"].isna(), "Station ID"])/len(df))
 print(len(df))
 df=df.loc[~df["embay_dist"].isna()].copy()
 print(len(df))
 
+# +
 #Outputting
-df.to_csv(outputs[1])
+#df.to_csv(outputs[1])
+# -
 
-# ## Linear Regressions
+# # Testing runtime of model without cross validation to start
+
+# The code below is adapted/lifted from Geostatistics Prediction Dashboard and it uses different alphas for continuous and discrete stations, in contrast with cross validation procedure below
+
+# ## Reading in df and building model
+
+# +
+#This is the source of the model's predictions
+df=pd.read_csv(outputs[1], index_col=0)
+
+#Resetting index will be useful in CV
+df.reset_index(inplace=True, drop=True)
+df.head()
+# -
+
+#Checking Dominion Stations to Make Sure they are in Vaudrey Embayment (C and NB)
+df.loc[df["Organization"]=="Dominion"]
+
+#Dropping nas (need to un-hardcord)
+print(len(df))
+df.dropna(subset=["Station ID", "Longitude", "Latitude", "Day", "Temperature (C)", "Organization"], inplace=True)
+print(len(df))
+
+# +
+# #Optional Restriction of TRAINING params to Eastern Sound
+# df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
+# print(len(df))
+# -
+
+# ^The above restriction destroys the model's ability to find correct hyperparameters, which shows that training on the LIS as a whole is clearly preferable
+
+pd.unique(df["Organization"])
+
+#Getting list of continuous organizations for alphas
+cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
+
+#Testing alpha logic
+cont_error=.1
+discrete_error=.2
+orgs=df.loc[df["Year"]==2019, "Organization"].values
+np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
+
+
+# +
+#Building Model (adapted to dashboard from "Geostatistics_Prediction_Dashboard_2.1.2.ipynb")
+
+def build_model(predictors, year, kernel, noise, discrete_error, cont_error):
+    
+    #Selecting data from proper year
+    period=df.loc[df["Year"]==year, station_var+ind_var+dep_var]
+    data=period.values
+
+    #Designing an alpha matrix based on which means are from discrete data
+    orgs=df.loc[df["Year"]==year, "Organization"].values
+
+    #applying mask
+    alpha=np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
+    
+    #Partitioning X and y
+    
+    X_train, y_train = data[:, 1:predictors+1], data[:, -1]
+    print(X_train.shape)
+    
+    #Ensuring proper dtypes
+    X_train=np.array(X_train, dtype=np.float64)
+    y_train=np.array(y_train, dtype=np.float64)
+
+    #Demeaning y
+    y_mean=np.mean(y_train)
+    y_train=y_train-y_mean
+
+    #Normalizing predictors (X) for training sets
+    #X_test[i]=X_test[i] - np.mean(X_test[i], axis=0)
+    #X_test[i]=X_test[i] / np.std(X_test[i], axis=0)
+
+    #Normalizing predictors (X) for testing sets
+    #X_train[i]=X_train[i] - np.mean(X_train[i], axis=0)
+    #X_train[i]=X_train[i] / np.std(X_train[i], axis=0)
+
+    #Constructing Process
+    if noise:
+        gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha)
+    else:
+        gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15)
+
+    #Training Process
+    gaussian_process.fit(X_train, y_train)
+
+    return(gaussian_process, y_mean)
+
+
+# +
+predictors = 4
+kernel = 1 * RBF(length_scale=[1, 1, 1, 1], length_scale_bounds=(1e-5, 1e5))
+noise = True
+cont_error=.1
+discrete_error=.2
+
+test_process, test_mean = build_model(predictors, 2019, kernel, 
+                                      noise=True, discrete_error=discrete_error,
+                                      cont_error=cont_error)
+
+# +
+#Testing the 
+# -
+
+# Started above process at 9:40, ended by 9:55
+
+# # Running cross validation
+
+#Param
+year=2019
+
+# +
+#Test of groupkfold
+kfold=GroupKFold(n_splits=folds)
+df_folds = kfold.split(df[ind_var], df[dep_var], df[station_var])
+
+for i, (train_index, test_index) in enumerate(df_folds):
+    print((len(train_index), len(test_index)))
+
+# +
+#With Noise CV
+data=df.loc[df["Year"]==year, station_var+ind_var+dep_var].values
+
+X, y = data[:, 1:predictors+1], data[:, -1]
+
+kernel = 1 * RBF(length_scale=[1, 1, 1, 1], length_scale_bounds=(1e-5, 1e5))
+
+gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=noise_alpha)
+
+start_time=datetime.datetime.now()
+CV = cross_validate(gaussian_process, X=X, y=y, groups=data[:, 0], scoring=("r2", "neg_root_mean_squared_error"), cv=GroupKFold(n_splits=folds), n_jobs=-1)
+end_time=datetime.datetime.now()
+
+print(end_time-start_time)
+# -
+
+#With noise
+CV
+
+# +
+#Demeaned
+data=df.loc[df["Year"]==year, station_var+ind_var+dep_var].values
+
+X, y = data[:, 1:predictors+1], data[:, -1]
+
+#De-meaning output
+y -= np.mean(y)
+
+kernel = 1 * RBF(length_scale=[1, 1, 1, 1], length_scale_bounds=(1e-5, 1e5))
+
+gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=noise_alpha)
+
+start_time=datetime.datetime.now()
+CV_demeaned = cross_validate(gaussian_process, X=X, y=y, groups=data[:, 0], scoring=("r2", "neg_root_mean_squared_error"), cv=GroupKFold(n_splits=folds), n_jobs=-1)
+end_time=datetime.datetime.now()
+
+print(end_time-start_time)
+# -
+
+#CV for demeaned y
+CV_demeaned
+
+# # Linear Regressions
 
 plt.rcParams["figure.figsize"]=(20, 6)
 
@@ -161,272 +357,3 @@ best_fit(df, "Latitude", "Temperature (C)")
 # Next lon and temp
 
 best_fit(df, "Longitude", "Temperature (C)")
-
-# # GPR with Noise
-
-# 1. In the time version of this notebook, we will begin modelling very little noise, assuming all data has the same noise used for the continuous data in the last version of this notebook (var=.1)
-
-# 2. We can test different noise parameters for what is now cross validation on rmse prediction of time series
-
-# 3. The "philosophy" of adding in time as a predictor is to change as little as possible in the code, while making use of the new "Day" variable from the new input.
-
-# ## Preparing Data
-
-# We prepare the data the same for the two parameter and three parameter regressions (which are the same code with the variable "predictors" changed from 2 to 3) so that we can compare the rmse on the same cross validation folds to try eliminating chance from the comparison as much as possible
-
-#Dropping nas
-print(len(df))
-df.dropna(subset=["Station ID", "Longitude", "Latitude", "Day", "Temperature (C)", "Organization"], inplace=True)
-print(len(df))
-
-#Getting list of continuous station IDs for testing
-cont_st=df.loc[(df["Organization"]=="STS_Tier_II") | (df["Organization"]=="EPA_FISM") | (df["Organization"]=="USGS_Cont"), "Station ID"]
-cont_st
-
-
-#Function for iteration
-def cross_validate(predictors, folds, year, kernel, noise, trials):
-    
-    #Making df for results
-    results=pd.DataFrame(columns=["rmse", "bias"])
-    
-    #Selecting data from proper year
-    period=df.loc[df["Year"]==year, ["Station ID", "Longitude", "Latitude", "embay_dist", "Temperature (C)"]]
-    data=period.values
-    k=folds
-    foldsize = int(len(data)/k)+1
-    
-    #Designing an alpha matrix based on which means are from discrete data
-    orgs=df.loc[df["Year"]==year, "Organization"].values
-
-    #applying mask (DOESN'T WORK, BORROW FROM OTHER WORKBOOK)
-    alpha=np.where(np.isin(orgs, cont_st), .1, 1.44)
-
-    for j in range(trials):    
-
-        #Randomly selecting training set
-        np.random.shuffle(data)
-        test_sets={}
-        train_sets={}
-        alphas={}
-
-        for n in range(k):
-            if n!=(k-1):
-                test_ind=range(n*foldsize, (n+1)*foldsize)
-                test_sets[n]=data[test_ind, :]
-                train_ind=[i for i in range(len(data)) if i not in test_ind]
-                train_sets[n]=data[train_ind, :]
-
-                #alphas
-                alphas[n]=alpha[train_ind]
-
-            else:
-                test_ind=range(n*foldsize, len(data))
-                test_sets[n]=data[test_ind, :]
-                train_ind=[i for i in range(len(data)) if i not in test_ind]
-                train_sets[n]=data[train_ind, :]
-
-                #alphas
-                alphas[n]=alpha[train_ind]
-
-        print(len(train_sets[2]))
-        print(len(test_sets[9]))
-
-        #Partitioning X and y (This time predictors are normalized)
-        X_train={}
-        y_train={}
-        X_test={}
-        y_means={}
-
-        for i in range(k):
-            X_train[i], y_train[i] = train_sets[i][:, 1:predictors+1], train_sets[i][:, -1]
-            X_test[i] = test_sets[i][:, 1:predictors + 1]
-
-            #Ensuring proper dtypes
-            X_train[i]=np.array(X_train[i], dtype=np.float64)
-            y_train[i]=np.array(y_train[i], dtype=np.float64)
-            X_test[i]=np.array(X_test[i], dtype=np.float64)
-
-            #Demeaning y
-            y_means[i]=np.mean(y_train[i])
-            y_train[i]=y_train[i]-y_means[i]
-
-            #Normalizing predictors (X) for training sets
-            #X_test[i]=X_test[i] - np.mean(X_test[i], axis=0)
-            #X_test[i]=X_test[i] / np.std(X_test[i], axis=0)
-
-            #Normalizing predictors (X) for testing sets
-            #X_train[i]=X_train[i] - np.mean(X_train[i], axis=0)
-            #X_train[i]=X_train[i] / np.std(X_train[i], axis=0)
-
-        #Running model on each fold
-        cross_v={}
-        rmse={}
-        bias={}
-
-        for i in range(k):
-            #print(X_train[i].shape)
-            #print(y_train[i].shape)
-            
-            #Constructing Process
-            if noise:
-                gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alphas[i])
-            else:
-                gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15)
-            
-            #Training Process
-            gaussian_process.fit(X_train[i], y_train[i])
-            print(gaussian_process.kernel_)
-
-            #Predicting for test data
-            y_pred, MSE = gaussian_process.predict(X_test[i], return_std=True)
-
-            #Re-adding mean of training data
-            y_pred += y_means[i]
-
-            #Concatenating Predictions to Observed
-            cross_v[i]=pd.DataFrame(np.append(test_sets[i], np.transpose([y_pred]), axis=1), columns=list(period.columns) + ["Predicted"])
-
-            #Restricting to continuous data to limit error
-            working=cross_v[i]
-            working=working.loc[working["Station ID"].isin(cont_st)]
-            cross_v[i]=working
-
-            #Calculating RMSE and Bias
-            if len(cross_v[i])>0:
-                cross_v[i]["Bias"]=cross_v[i]["Predicted"]-cross_v[i]["Temperature (C)"]
-                cross_v[i]["Squared Error"]=np.square(cross_v[i]["Bias"])
-
-                rmse[i]=np.sqrt(np.sum(cross_v[i]["Squared Error"])/len(cross_v[i]))
-                bias[i]=np.mean(cross_v[i]["Bias"])
-            else:
-                rmse[i]=np.nan
-                bias[i]=np.nan
-        
-        current_result=pd.DataFrame(data={"rmse":[np.nanmean(list(rmse.values()))], "bias": [np.nanmean(list(bias.values()))]})
-        results=pd.concat([results, current_result], ignore_index=True)
-
-    return(results)
-
-
-# +
-#Testing loop
-kernel = 1 * RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-5, 1e2))
-
-results=cross_validate(2, 10, 2019, kernel, True, 10)
-results
-# -
-
-print(results.mean(axis=0))
-
-# # Actual Testing
-
-years=[2019, 2020, 2021]
-folds=10
-trials=10
-
-# ## RBF 2 predictors
-
-# +
-predictors = 2
-kernel = 1 * RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-5, 1e2))
-noise=True
-
-agg=pd.DataFrame()
-
-for year in years:
-    results=cross_validate(predictors, folds, year, kernel, noise, trials)
-    agg=pd.concat([agg, results])
-    print(agg)
-# -
-
-print(agg.mean(axis=0))
-
-# ## Rational Quadratic 2 predictors
-
-# +
-predictors = 2
-kernel = 1 * RationalQuadratic(length_scale=1.0, length_scale_bounds=(1e-5, 1e2))
-noise = False
-
-agg=pd.DataFrame()
-
-for year in years:
-    results=cross_validate(predictors, folds, year, kernel, noise, trials)
-    agg=pd.concat([agg, results])
-    print(agg)
-# -
-
-print(agg.mean(axis=0))
-
-# ## RBF 3 predictors
-
-# +
-predictors = 3
-kernel = 1 * RBF(length_scale=[1e-1, 1e-1, 1e-2], length_scale_bounds=(1e-5, 1e5))
-noise = True
-
-agg=pd.DataFrame()
-
-for year in years:
-    results=cross_validate(predictors, folds, year, kernel, noise, trials)
-    agg=pd.concat([agg, results])
-    print(agg)
-# -
-
-print(agg.mean(axis=0))
-
-# ## Rational Quadratic 3 predictors
-
-# +
-predictors = 3
-kernel = 1 * RationalQuadratic(length_scale=1.0, length_scale_bounds=(1e-5, 1e2))
-noise = False
-
-agg=pd.DataFrame()
-
-for year in years:
-    results=cross_validate(predictors, folds, year, kernel, noise, trials)
-    agg=pd.concat([agg, results])
-    print(agg)
-# -
-
-print(agg.mean(axis=0))
-
-# ## Matern Kernel (2 predictors)
-
-from sklearn.gaussian_process.kernels import Matern
-
-# +
-predictors = 2
-kernel = 1 * Matern(length_scale=[1.0, 1.0], nu=1.5, length_scale_bounds=(1e-5, 1e5))
-noise = True
-
-agg=pd.DataFrame()
-
-for year in years:
-    results=cross_validate(predictors, folds, year, kernel, noise, trials)
-    agg=pd.concat([agg, results])
-    print(agg)
-# -
-
-print(agg.mean(axis=0))
-
-# ## Matern Kernel (3 predictors)
-
-# +
-predictors = 3
-kernel = 1 * Matern(length_scale=[1e-1, 1e-1, 1e-2], nu=1.5, length_scale_bounds=(1e-5, 1e5))
-noise = True
-
-agg=pd.DataFrame()
-
-for year in years:
-    results=cross_validate(predictors, folds, year, kernel, noise, trials)
-    agg=pd.concat([agg, results])
-    print(agg)
-# -
-
-print(agg.mean(axis=0))
-
-
