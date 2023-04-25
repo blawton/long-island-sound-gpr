@@ -192,23 +192,26 @@ working=df.loc[df["Year"]==2019]
 plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
 plt.show()
 
-# ### Checking on stations in each year
+# ## Checking on stations in each year
 
-#2019
+# ## 2019
+
 plt.figure()
 plt.imshow(array)
 working=df.loc[df["Year"]==2019]
 plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
 plt.show()
 
-#2020
+# ## 2020
+
 plt.figure()
 plt.imshow(array)
 working=df.loc[df["Year"]==2020]
 plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
 plt.show()
 
-#2021
+# ## 2021
+
 plt.figure()
 plt.imshow(array)
 working=df.loc[df["Year"]==2021]

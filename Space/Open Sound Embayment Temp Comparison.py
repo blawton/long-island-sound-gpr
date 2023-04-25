@@ -575,15 +575,14 @@ def interpolate_means(summer_means):
     return(output)
 
 
-#First continuous data alone
-cont_mean_error = interpolate_means(aggregated["STS_Tier_II"].loc[aggregated["STS_Tier_II"]["Year"]>2010])
-cont_mean_error.groupby("Year")["Bias"].describe()
-
-#Now all data
 agg_mean_error=interpolate_means(agg_summer_means.loc[agg_summer_means["Year"]>2010])
 agg_mean_error
 
-agg_mean_error.groupby(["Year"])["Bias"].describe().loc[2019:]
+#First grouped by organization
+agg_mean_error.groupby(["Organization", "Year"])["Bias"].describe()["mean"].loc[:, 2019:]
+
+#Now all organizations together
+agg_mean_error.groupby(["Year"])["Bias"].describe()["mean"].loc[2019:]
 
 # # Graphing all Errors in 2d
 
