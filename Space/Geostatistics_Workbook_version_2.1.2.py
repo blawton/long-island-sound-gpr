@@ -14,8 +14,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import NearestNDInterpolator
 
-pd.set_option('display.max_columns', 50)
-pd.set_option('display.max_rows', 100)
+# +
+# Display params
+
+from IPython.display import display, HTML
+display(HTML("<style>.container { width:100% !important; }</style>"))
+
+pd.options.display.max_rows=150
+pd.options.display.max_columns=150
+# -
 
 # ENSURE STATION ID IS UNIQUE FOR IMPORTED SUMMER MEANS
 

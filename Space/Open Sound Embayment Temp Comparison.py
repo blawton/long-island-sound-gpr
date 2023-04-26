@@ -14,8 +14,15 @@ from math import radians
 
 # This notebook needs a proper readme
 
+# +
+# Display params
+
+from IPython.display import display, HTML
+display(HTML("<style>.container { width:100% !important; }</style>"))
+
 pd.options.display.max_rows=150
 pd.options.display.max_columns=150
+# -
 
 #Working dir
 if(os.path.basename(os.getcwd())[0:18]!="Data Visualization"):
