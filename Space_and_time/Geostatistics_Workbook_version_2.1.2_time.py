@@ -76,14 +76,14 @@ paths[1]=config["Workbook_path1"]
 #CSVs
 
 #Aggregate Data of All Organizations for Testing
-paths[2]="Data/Space_and_time_agg/agg_summer_means_daily.csv"
+paths[2]="Data/Space_and_time_agg/agg_summer_means_daily_morning.csv"
 
 #All stations/years with coastal features to merge with daily means
 #no need to re-calc
 paths[3]="Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
 
 #Ouput for Aggregate Data above but with embay_dist attached
-outputs[1]="Data/Space_and_time_agg/agg_daily_coastal_features_4_22_2023.csv"
+outputs[1]="Data/Space_and_time_agg/agg_daily_morning_coastal_features_4_22_2023.csv"
 
 for path in paths.values():
     assert(os.path.exists(path))
@@ -113,7 +113,7 @@ predictors=len(ind_var)
 noise_alpha=.2
 # -
 
-# # Preparing Data
+# # Preparing Data (only needs to be run once)
 
 #Reading in time data
 df=pd.read_csv(paths[2], index_col=0)
@@ -139,25 +139,15 @@ print(len(df))
 df=df.loc[~df["embay_dist"].isna()].copy()
 print(len(df))
 
-# +
 #Outputting
-#df.to_csv(outputs[1])
-# -
+df.to_csv(outputs[1])
 
-# # Testing runtime of model without cross validation to start
+# # Reading in data
 
-# The code below is adapted/lifted from Geostatistics Prediction Dashboard and it uses different alphas for continuous and discrete stations, in contrast with cross validation procedure below
-
-# ## Reading in df and building model
-
-# +
 #This is the source of the model's predictions
 df=pd.read_csv(outputs[1], index_col=0)
-
-#Resetting index will be useful in CV
 df.reset_index(inplace=True, drop=True)
 df.head()
-# -
 
 #Checking Dominion Stations to Make Sure they are in Vaudrey Embayment (C and NB)
 df.loc[df["Organization"]=="Dominion"]
@@ -166,6 +156,10 @@ df.loc[df["Organization"]=="Dominion"]
 print(len(df))
 df.dropna(subset=["Station ID", "Longitude", "Latitude", "Day", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
+
+# # Testing runtime of model without cross validation to start
+
+# The code below is adapted/lifted from Geostatistics Prediction Dashboard and it uses different alphas for continuous and discrete stations, in contrast with cross validation procedure below
 
 # +
 # #Optional Restriction of TRAINING params to Eastern Sound
@@ -245,9 +239,6 @@ discrete_error=.2
 test_process, test_mean = build_model(predictors, 2019, kernel, 
                                       noise=True, discrete_error=discrete_error,
                                       cont_error=cont_error)
-
-# +
-#Testing the 
 # -
 
 # Started above process at 9:40, ended by 9:55
@@ -307,6 +298,8 @@ print(end_time-start_time)
 
 #CV for demeaned y
 CV_demeaned
+
+# # True Parameter Optimization
 
 # # Linear Regressions
 

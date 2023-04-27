@@ -241,7 +241,7 @@ print(len(df))
 
 pd.unique(df["Organization"])
 
-#Getting list of continuous organizations for alphas
+#Getting list of continuous organizations for alphas (move to YAML)
 cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 
 #Testing alpha logic

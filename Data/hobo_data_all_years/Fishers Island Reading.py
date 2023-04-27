@@ -68,6 +68,7 @@ for i in np.arange(1, 5):
                 working = pd.read_csv(path + str(year) + '/' + site_dict[i].replace(" ", "").lower() + str(year) + ".csv")
             working['Year']=year
             
+            #Reading in data using a different format depending on year
             if (year < 2018):
                 working.drop(working.index[0], axis=0, inplace=True)
                 working.drop(working.columns[0], axis=1, inplace=True)
@@ -93,14 +94,14 @@ for i in np.arange(1, 5):
                 
             else:
                 working.rename(columns={working.columns[1]:"date", working.columns[2]:"time", working.columns[3]:"temp"}, inplace=True)
-                working.drop("time", axis=1, inplace=True)
                 working.drop(working.index[:3], axis=0, inplace=True)
                 try: 
-                    working['date']=pd.to_datetime(working["date"], format='%-d/%m/%Y') 
+                    working["date"]=pd.to_datetime(working["date"] + " " + working["time"],  infer_datetime_format=True)
                 except:
-                    working["date"]=pd.to_datetime(working["date"],  infer_datetime_format=True)
+                    print("date read error for site " +str(i))
                 
-                #working["date"]=working["date"].apply(lambda dt: dt.replace(year=year))
+                #Dropping original time column to make format uniform
+                working.drop("time", axis=1, inplace=True)
                 
             site_data[i]=pd.concat([site_data[i], working], ignore_index=True)
         except:
