@@ -13,11 +13,6 @@ import os
 import datetime
 import time
 
-from osgeo import gdal
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.interpolate import NearestNDInterpolator
-
 pd.set_option('display.max_columns', 50)
 pd.set_option('display.max_rows', 100)
 
@@ -111,6 +106,58 @@ dep_var = ["Temperature (C)"]
 predictors=len(ind_var)
 
 noise_alpha=.2
+
+
+# +
+#Building Model (adapted to dashboard from "Geostatistics_Prediction_Dashboard_2.1.2.ipynb")
+#If no noise is desired, set alpha=0
+
+def build_model(predictors, year, kernel, alpha, nro):
+    
+    #Selecting data from proper year
+    period=df.loc[df["Year"]==year, station_var+ind_var+dep_var]
+    data=period.values
+
+    #Designing an alpha matrix based on which means are from discrete data
+    #orgs=df.loc[df["Year"]==year, "Organization"].values
+
+    #applying mask
+    #alpha=np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
+    
+    #Partitioning X and y
+    
+    X_train, y_train = data[:, 1:predictors+1], data[:, -1]
+    print(X_train.shape)
+    
+    #Ensuring proper dtypes
+    X_train=np.array(X_train, dtype=np.float64)
+    y_train=np.array(y_train, dtype=np.float64)
+
+    #Demeaning y
+    y_mean=np.mean(y_train)
+    y_train=y_train-y_mean
+
+    #Normalizing predictors (X) for training sets
+    #X_test[i]=X_test[i] - np.mean(X_test[i], axis=0)
+    #X_test[i]=X_test[i] / np.std(X_test[i], axis=0)
+
+    #Normalizing predictors (X) for testing sets
+    #X_train[i]=X_train[i] - np.mean(X_train[i], axis=0)
+    #X_train[i]=X_train[i] / np.std(X_train[i], axis=0)
+
+    #Constructing Process
+    if (alpha>0):
+        gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=nro, alpha=alpha)
+    elif (alpha==0):
+        gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=nro)
+    else: raise ValueError("Alpha must be >=0")
+    
+    #Training Process
+    gaussian_process.fit(X_train, y_train)
+
+    return(gaussian_process, y_mean)
+
+
 # -
 
 # # Preparing Data (only needs to be run once)
@@ -156,92 +203,6 @@ df.loc[df["Organization"]=="Dominion"]
 print(len(df))
 df.dropna(subset=["Station ID", "Longitude", "Latitude", "Day", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
-
-# # Testing runtime of model without cross validation to start
-
-# The code below is adapted/lifted from Geostatistics Prediction Dashboard and it uses different alphas for continuous and discrete stations, in contrast with cross validation procedure below
-
-# +
-# #Optional Restriction of TRAINING params to Eastern Sound
-# df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
-# print(len(df))
-# -
-
-# ^The above restriction destroys the model's ability to find correct hyperparameters, which shows that training on the LIS as a whole is clearly preferable
-
-pd.unique(df["Organization"])
-
-#Getting list of continuous organizations for alphas
-cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
-
-#Testing alpha logic
-cont_error=.1
-discrete_error=.2
-orgs=df.loc[df["Year"]==2019, "Organization"].values
-np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
-
-
-# +
-#Building Model (adapted to dashboard from "Geostatistics_Prediction_Dashboard_2.1.2.ipynb")
-
-def build_model(predictors, year, kernel, noise, discrete_error, cont_error):
-    
-    #Selecting data from proper year
-    period=df.loc[df["Year"]==year, station_var+ind_var+dep_var]
-    data=period.values
-
-    #Designing an alpha matrix based on which means are from discrete data
-    orgs=df.loc[df["Year"]==year, "Organization"].values
-
-    #applying mask
-    alpha=np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
-    
-    #Partitioning X and y
-    
-    X_train, y_train = data[:, 1:predictors+1], data[:, -1]
-    print(X_train.shape)
-    
-    #Ensuring proper dtypes
-    X_train=np.array(X_train, dtype=np.float64)
-    y_train=np.array(y_train, dtype=np.float64)
-
-    #Demeaning y
-    y_mean=np.mean(y_train)
-    y_train=y_train-y_mean
-
-    #Normalizing predictors (X) for training sets
-    #X_test[i]=X_test[i] - np.mean(X_test[i], axis=0)
-    #X_test[i]=X_test[i] / np.std(X_test[i], axis=0)
-
-    #Normalizing predictors (X) for testing sets
-    #X_train[i]=X_train[i] - np.mean(X_train[i], axis=0)
-    #X_train[i]=X_train[i] / np.std(X_train[i], axis=0)
-
-    #Constructing Process
-    if noise:
-        gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha)
-    else:
-        gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15)
-
-    #Training Process
-    gaussian_process.fit(X_train, y_train)
-
-    return(gaussian_process, y_mean)
-
-
-# +
-predictors = 4
-kernel = 1 * RBF(length_scale=[1, 1, 1, 1], length_scale_bounds=(1e-5, 1e5))
-noise = True
-cont_error=.1
-discrete_error=.2
-
-test_process, test_mean = build_model(predictors, 2019, kernel, 
-                                      noise=True, discrete_error=discrete_error,
-                                      cont_error=cont_error)
-# -
-
-# Started above process at 9:40, ended by 9:55
 
 # # Running cross validation
 
@@ -299,7 +260,80 @@ print(end_time-start_time)
 #CV for demeaned y
 CV_demeaned
 
-# # True Parameter Optimization
+# # Building model w/ optimized hyperparameters
+
+# This section uses the alpha parameter/kernel with the best result from Parameter_Optimization. See "root/Results" folder for reference
+
+# +
+#Global params
+
+station_var=["Station ID"]
+
+ind_var=["Longitude", "Latitude", "Day", "embay_dist"]
+
+dep_var = ["Temperature (C)"]
+
+predictors=len(ind_var)
+
+lsb=(1e-5, 1e5)
+
+#Values for different Length Scale Bounds to optimizew training time
+
+lsb1=(1e-5, 1e5)
+lsb2=(10, 1e5)
+
+# -
+
+# ## 2019
+
+# +
+#Optimal params
+
+#kernel
+kernel =1*RBF([1]*predictors, length_scale_bounds=lsb) + 1*RationalQuadratic(length_scale_bounds=lsb)
+
+#Noise alpha
+noise_alpha=.2
+
+#n_restarts_optimizer
+nro=15
+# -
+
+#Building gp using build function above
+opt_gp, ymean = build_model(predictors, 2019, kernel, noise_alpha, nro)
+
+opt_gp.kernel_
+
+#Quick test to compare to cross validated
+opt_gp.predict([[-71.954278,41.277306, 182, 0.0]])
+
+# ## 2019 with length scale bounds trick
+
+# +
+#Optimal params
+
+#kernel
+kernel =1*RBF([1]*predictors, length_scale_bounds=lsb1) + 1*RationalQuadratic(length_scale_bounds=lsb2)
+
+#Noise alpha
+noise_alpha=.2
+
+#n_restarts_optimizer
+nro=15
+# -
+
+#Building gp using build function above
+start_time=datetime.datetime.now()
+opt_gp2, ymean = build_model(predictors, 2019, kernel, noise_alpha, nro)
+end_time=datetime.datetime.now()
+print(end_time-start_time)
+
+opt_gp2.kernel_
+
+#Quick test to compare to cross validated
+opt_gp2.predict([[-71.954278,41.277306, 182, 0.0]])
+
+
 
 # # Linear Regressions
 
