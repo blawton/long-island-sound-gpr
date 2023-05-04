@@ -119,8 +119,8 @@ print(len(stations))
 stations.dropna(subset=["Longitude", "Latitude"], axis=0, inplace=True)
 print(len(stations))
 
-#Fixing a Longitude Issue
-stations.loc[stations["Station ID"]=="MAM-2B-L", "Longitude"]= -stations.loc[stations["Station ID"]=="MAM-2B-L", "Longitude"].abs()
+#Fixing all Longitude Issues
+stations["Longitude"]= -stations["Longitude"].abs()
 stations
 
 #Merging

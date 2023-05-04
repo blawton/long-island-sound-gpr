@@ -105,7 +105,20 @@ dep_var = ["Temperature (C)"]
 
 predictors=len(ind_var)
 
+years = [2019, 2020, 2021]
+
+#Noise alpha can actual vary and may be reset below
 noise_alpha=.2
+
+lsb=(1e-5, 1e5)
+
+#Values for different Length Scale Bounds to optimizew training time
+
+lsb1=(1e-5, 1e5)
+lsb2=(1, 1e5)
+
+#n_restarts_optimizer
+nro=15
 
 
 # +
@@ -138,12 +151,8 @@ def build_model(predictors, year, kernel, alpha, nro):
     y_train=y_train-y_mean
 
     #Normalizing predictors (X) for training sets
-    #X_test[i]=X_test[i] - np.mean(X_test[i], axis=0)
-    #X_test[i]=X_test[i] / np.std(X_test[i], axis=0)
-
-    #Normalizing predictors (X) for testing sets
-    #X_train[i]=X_train[i] - np.mean(X_train[i], axis=0)
-    #X_train[i]=X_train[i] / np.std(X_train[i], axis=0)
+    X_train=X_train - np.mean(X_train, axis=0)
+    X_train=X_train / np.std(X_train, axis=0)
 
     #Constructing Process
     if (alpha>0):
@@ -264,27 +273,7 @@ CV_demeaned
 
 # This section uses the alpha parameter/kernel with the best result from Parameter_Optimization. See "root/Results" folder for reference
 
-# +
-#Global params
-
-station_var=["Station ID"]
-
-ind_var=["Longitude", "Latitude", "Day", "embay_dist"]
-
-dep_var = ["Temperature (C)"]
-
-predictors=len(ind_var)
-
-lsb=(1e-5, 1e5)
-
-#Values for different Length Scale Bounds to optimizew training time
-
-lsb1=(1e-5, 1e5)
-lsb2=(10, 1e5)
-
-# -
-
-# ## 2019
+# ## 2019 (initial test)
 
 # +
 #Optimal params
@@ -307,31 +296,63 @@ opt_gp.kernel_
 #Quick test to compare to cross validated
 opt_gp.predict([[-71.954278,41.277306, 182, 0.0]])
 
-# ## 2019 with length scale bounds trick
+#This one has seperate length scale bounds for the RBF and Rational Quadratic
+opt_gp2.kernel_
+
+#Quick test to compare to cross validated
+opt_gp2.predict([[-71.954278,41.277306, 182, 0.0]])
+
+# ## All years
 
 # +
 #Optimal params
 
 #kernel
-kernel =1*RBF([1]*predictors, length_scale_bounds=lsb1) + 1*RationalQuadratic(length_scale_bounds=lsb2)
+kernel =1*RBF([1]*predictors, length_scale_bounds=lsb) + 1*RationalQuadratic(length_scale_bounds=lsb)
 
 #Noise alpha
-noise_alpha=.2
+noise_alpha=.25
 
-#n_restarts_optimizer
-nro=15
+# +
+#Building gp using build function above
+ymeans, gps = {}, {}
+
+for year in years:
+    start_time=datetime.datetime.now()
+    gps[year], ymeans[year] = build_model(predictors, year, kernel, noise_alpha, nro)
+    end_time=datetime.datetime.now()
+    print(year)
+    print(end_time-start_time)
 # -
 
-#Building gp using build function above
-start_time=datetime.datetime.now()
-opt_gp2, ymean = build_model(predictors, 2019, kernel, noise_alpha, nro)
-end_time=datetime.datetime.now()
-print(end_time-start_time)
+#Getting normalization factors as dictionary (to adjust length scales for comparison)
+norms={}
+for year in years:
+    period=df.loc[df["Year"]==year, station_var+ind_var+dep_var]
+    data=period.values
 
-opt_gp2.kernel_
+    X_train, y_train = data[:, 1:predictors+1], data[:, -1]
 
-#Quick test to compare to cross validated
-opt_gp2.predict([[-71.954278,41.277306, 182, 0.0]])
+    #Ensuring proper dtypes
+    X_train=np.array(X_train, dtype=np.float64)
+    
+    norms[year]=np.std(X_train, axis=0)
+    print(np.std(X_train, axis=0))
+    plt.hist(X_train[:, 0])
+    plt.show()
+    print(max(X_train[:, 0]))
+    print(min(X_train[:, 0]))
+
+df.loc[df["Longitude"]>0]
+
+for year in years:
+    params = gps[year].kernel_.get_params()
+    #print(params)
+    print(np.multiply(norms[year], params["k1__k2__length_scale"]))
+
+gps[2020].kernel_.get_params()
+
+gps[2021].kernel_.get_params()
 
 
 
