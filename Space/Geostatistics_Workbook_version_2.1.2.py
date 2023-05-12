@@ -7,6 +7,7 @@ from sklearn.gaussian_process.kernels import RationalQuadratic
 from sklearn.gaussian_process.kernels import WhiteKernel
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
+import os
 plt.rcParams["figure.figsize"]=(20, 20)
 
 from osgeo import gdal
@@ -81,10 +82,10 @@ paths[1]=config["Workbook_path1"]
 #CSVs
 
 #Aggregate Data of All Organizations for Testing
-paths[2]=config["Workbook_path2"]
+paths[2]="Data/Space_agg/agg_summer_means_4_21_2023_II.csv"
 
 #Ouput for Aggregate Data above but with embay_dist attached
-outputs[1]=config["Workbook_output1"]
+outputs[1]="Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
 
 for path in paths.values():
     assert(os.path.exists(path))
@@ -188,41 +189,57 @@ working=df
 plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
 plt.show()
 
+#Stations in non-existent embayment (on final model)
+gol=df.loc[df["Station ID"].str.contains("GOL")]
+print(gol)
+df.drop(gol.index, axis=0, inplace=True)
+gol=df.loc[df["Station ID"].str.contains("GOL")]
+print(gol)
+
 #Fixing East Beach and Barleyfield Cove (These actually should have embay_dist=0)
 df.loc[df["Station ID"]=="East Beach", "embay_dist"] = 0
 df.loc[df["Station ID"]=="Barleyfield Cove", "embay_dist"] = 0
 
-#Checking on stations where embay_dist=0
+#Checking on stations in 2019
 plt.figure()
 plt.imshow(array)
 working=df.loc[df["Year"]==2019]
 plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
 plt.show()
 
-# ## Checking on stations in each year
+# # Checking on stations in each year and outputting to file
 
 # ## 2019
 
+display_array = np.where(array>0, .25, 0)
+display_array[0,0]=1
+
 plt.figure()
-plt.imshow(array)
+plt.imshow(display_array)
 working=df.loc[df["Year"]==2019]
-plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
+plt.scatter(working["xPixel"], working["yPixel"], s=2, c="Red")
+plt.title("Sampling Locations 2019", size= "xx-large")
+plt.axis("off")
 plt.show()
 
 # ## 2020
 
 plt.figure()
-plt.imshow(array)
+plt.imshow(display_array)
 working=df.loc[df["Year"]==2020]
-plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
+plt.scatter(working["xPixel"], working["yPixel"], s=2, c="Red")
+plt.title("Sampling Locations 2020", size= "xx-large")
+plt.axis("off")
 plt.show()
 
 # ## 2021
 
 plt.figure()
-plt.imshow(array)
+plt.imshow(display_array)
 working=df.loc[df["Year"]==2021]
-plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
+plt.scatter(working["xPixel"], working["yPixel"], s=2, c="Red")
+plt.title("Sampling Locations 2021", size= "xx-large")
+plt.axis("off")
 plt.show()
 
 print(array.shape)
@@ -294,9 +311,14 @@ print(len(df))
 df.dropna(subset=["Station ID", "Longitude", "Latitude", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
 
-#Getting list of continuous station IDs for testing
-cont_st=df.loc[(df["Organization"]=="STS_Tier_II") | (df["Organization"]=="EPA_FISM") | (df["Organization"]=="USGS_Cont"), "Station ID"]
-cont_st
+#Getting list of continuous organizations for alphas (move to YAML)
+cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
+
+#Testing alpha logic
+cont_error=.1
+discrete_error=1.44
+orgs=df.loc[df["Year"]==2019, "Organization"].values
+np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
 
 
 #Function for iteration
@@ -314,8 +336,8 @@ def cross_validate(predictors, folds, year, kernel, noise, trials):
     #Designing an alpha matrix based on which means are from discrete data
     orgs=df.loc[df["Year"]==year, "Organization"].values
 
-    #applying mask (DOESN'T WORK, BORROW FROM OTHER WORKBOOK)
-    alpha=np.where(np.isin(orgs, cont_st), .1, 1.44)
+    #applying mask for alphas that has been tested
+    alpha=np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
 
     for j in range(trials):    
 
@@ -344,8 +366,7 @@ def cross_validate(predictors, folds, year, kernel, noise, trials):
                 #alphas
                 alphas[n]=alpha[train_ind]
 
-        print(len(train_sets[2]))
-        print(len(test_sets[9]))
+        print(len(train_sets[0]))
 
         #Partitioning X and y (This time predictors are normalized)
         X_train={}
@@ -438,7 +459,7 @@ print(results.mean(axis=0))
 
 years=[2019, 2020, 2021]
 folds=10
-trials=10
+trials=1
 
 # ## RBF 2 predictors
 

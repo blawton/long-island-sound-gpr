@@ -84,10 +84,10 @@ paths[4]  = config["Prediction_Dashboard_path4"]
 #CSV
 
 #Training Data
-paths[5] = config["Prediction_Dashboard_path5"]
+paths[5] = "Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
 
 for path in paths.values():
-    assert(os.path.exists(path))
+    assert os.path.exists(path), path
 # -
 
 # # Mainpulating Coastal Distance (Only Do Once)
@@ -112,7 +112,7 @@ proj=embay_dist.GetProjection()
 proj
 
 band=embay_dist.GetRasterBand(1)
-array=band.ReadAsArray()
+array_embay_dist=band.ReadAsArray()
 
 pixelwidth=gt[1]
 pixelheight=-gt[5]
@@ -127,7 +127,7 @@ cols
 
 array_os
 
-array
+array_embay_dist
 
 # +
 # #Displaying crucial regions
@@ -140,10 +140,10 @@ array
 # -
 
 #Starting visualization
-plt.imshow(array)
+plt.imshow(array_embay_dist)
 
 #Setting open sound (non vaudrey embayments) to 0
-array=np.where(array_os>=0, 0, array)
+array=np.where(array_os>=0, 0, array_embay_dist)
 
 #With open sound
 plt.imshow(array)
@@ -157,6 +157,10 @@ array=np.where(array<0, np.nan, array)
 
 #Final array
 plt.imshow(array)
+
+#Final Array only for embayments
+plt.imshow(np.where(array_embay_dist>0, array, np.nan))
+plt.axis("off")
 
 # +
 # #Border for potential future interpolation
@@ -182,9 +186,9 @@ outband.FlushCache()
 outband=None
 outds=None
 
-# # Reading in Data
+# # Reading in Data and Building in Model
 
-# ## array
+# ## Reading array
 
 #Using the updated file without points removed
 embay_dist = gdal.Open(paths[4])
@@ -215,7 +219,7 @@ array
 array=np.where(array<0, np.nan, array)
 array
 
-# ## Reading in df and building model
+# ## Reading csv and building model
 
 #This is the source of the model's predictions
 df=pd.read_csv(paths[5], index_col=0)
