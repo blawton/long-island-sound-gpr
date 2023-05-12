@@ -1,17 +1,7 @@
-# 1. This notebook uses cross validation where train and test sets are chosen based on stations, which allows the estimation of CV-error reconstructing entire time series, not just filling in existing time series. The dropping of data not given an embay_dist for the summer average below (which may be temporary) ensures that all time series are interpolatable, so the interesting question is recreating an entirely missing time series (partial reconstruction can be assessed seperately).
-#
-#
-# 2. In theory, alpha values still differ between continuous and discrete stations, but this time less so, because the discrete variation is just the variation that could be seen within one day. On top of this, there's a better arguement that the error between discrete stations is uncorrelated. However, in practice, to simplify the use of scikit's cross-validation function, we use a uniform alpha value (double the previous continuous alpha from Space model) to begin with.
-#
-#
-# 3. (NOTE) "df" is the overall dataset, and remains a global variable throughout the duration of the notebook. The code assumes that the variable for year of a measurement is labelled as "Year", otherwise labels should match the variable names below
-#
-#
-# 4. The 2020 results in the first stage of param optimization were skewed by a positive longitude issue, but it is fairly clear that .25 degrees of noise is optimal, so use that param in pre-processing optimization regardless
+# This notebook uses params determined from the param optimization notebook, but this time we test if normalization actually improves results. It's clear that normalization significantly improves the chances of LFBGS convergence, but we are interested in whether or not having the RationalQuadratic Kernel lenght scale on homoskedastic vs heteroskedastic data results in better prediction error (we subtract mean in either case as it should make no difference - in theory).
 
 import pandas as pd
 import numpy as np
-from itertools import product
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
 from sklearn.gaussian_process.kernels import RationalQuadratic
@@ -19,8 +9,9 @@ from sklearn.gaussian_process.kernels import WhiteKernel
 from sklearn.model_selection import cross_validate
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import GroupKFold
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
-import statsmodels.api as sm
 import os
 import datetime
 import time
@@ -28,7 +19,7 @@ import time
 pd.set_option('display.max_columns', 50)
 pd.set_option('display.max_rows', 100)
 
-#Working dir
+#Setting working dir to root
 if(os.path.basename(os.getcwd())[0:18]!="Data Visualization"):
     os.chdir("..")
 assert(os.path.basename(os.getcwd())[0:18]=="Data Visualization")
@@ -76,18 +67,12 @@ priority_score="neg_root_mean_squared_error"
 #Restarts in optimizer
 nro=15
 
-# +
-#Parameters to test
+#In this file, kernel, lsb, and noise_alpha are set
+lsb=(1e-5, 1e5)
 
-#Length scale bounds (uniform for all kernels)
-lsb1=(1e-5, 1e5)
-lsb2=(1, 1e5)
+kernel=1*RBF([1]*predictors, length_scale_bounds=lsb) + 1*RationalQuadratic(length_scale_bounds=lsb)
 
-#Noise
-alphas=[.15, .2, .25]
-
-#Alpha is loaded into first kernel for now
-kernels = [1*RBF([1]*predictors, length_scale_bounds=lsb1) + 1*RationalQuadratic(length_scale_bounds=lsb2)]
+noise_alpha=.25
 # -
 
 # # Reading in data
@@ -105,7 +90,7 @@ print(len(df))
 df.dropna(subset=["Station ID", "Longitude", "Latitude", "Day", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
 
-# # Running cross validation
+# # Running cross validation on pipeline
 
 # In this notebook, it has been decided to run optimization with demeaned data based on previous observations of "Geostatistics_Workbook_version_2.1.2_time". This should not affect the rmse, and r^2 values can be interpreted accordingly
 
@@ -122,12 +107,16 @@ for i, (train_index, test_index) in enumerate(df_folds):
 CV_results={}
 CV_best_estimators={}
 
-parameters = {'kernel': kernels,
-              'alpha': alphas
-             }
-gp = GaussianProcessRegressor(n_restarts_optimizer=nro)
+gp = GaussianProcessRegressor(kernel=kernel, alpha=noise_alpha, n_restarts_optimizer=nro)
 
-clf = GridSearchCV(gp, parameters, cv=GroupKFold(n_splits=folds), n_jobs=-1, scoring=scores, refit=priority_score)
+pipe = Pipeline([('scaler', StandardScaler()),
+                 ('model', gp)])
+
+parameters = {
+    "scaler__with_std": [True, False]
+}
+
+clf = GridSearchCV(pipe, param_grid=parameters, cv=GroupKFold(n_splits=folds), n_jobs=-1, scoring=scores, refit=priority_score)
     
 for year in years:
     #Selecting year
@@ -146,7 +135,7 @@ for year in years:
     CV_best_estimators[year] =clf.best_estimator_
     
     #Saving to file
-    pd.DataFrame(CV_results[year]).to_csv("Results/Parameter_Optimization_time_results" + str(year)+ "_II.csv")
+    pd.DataFrame(CV_results[year]).to_csv("Results/Pre_Processing_Optimization_time_results" + str(year)+ ".csv")
     
     print(year)
 # -

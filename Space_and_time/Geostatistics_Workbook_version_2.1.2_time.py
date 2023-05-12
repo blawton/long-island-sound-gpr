@@ -1,20 +1,12 @@
-import pandas as pd
-import numpy as np
-from itertools import product
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF
-from sklearn.gaussian_process.kernels import RationalQuadratic
-from sklearn.gaussian_process.kernels import WhiteKernel
-from sklearn.model_selection import cross_validate
-from sklearn.model_selection import GroupKFold
-import matplotlib.pyplot as plt
-import statsmodels.api as sm
-import os
-import datetime
-import time
+# 1. This notebook uses cross validation where train and test sets are chosen based on stations, which allows the estimation of CV-error reconstructing entire time series, not just filling in existing time series. The dropping of data not given an embay_dist for the summer average below (which may be temporary) ensures that all time series are interpolatable, so the interesting question is recreating an entirely missing time series (partial reconstruction can be assessed seperately).
+#
+#
+# 2. In theory, alpha values still differ between continuous and discrete stations, but this time less so, because the discrete variation is just the variation that could be seen within one day. On top of this, there's a better arguement that the error between discrete stations is uncorrelated. However, in practice, to simplify the use of scikit's cross-validation function, we use a uniform alpha value (double the previous continuous alpha from Space model) to begin with.
+#
+#
+# 3. (NOTE) "df" is the overall dataset, and remains a global variable throughout the duration of the notebook
 
-pd.set_option('display.max_columns', 50)
-pd.set_option('display.max_rows', 100)
+# __Versions:__
 
 # __v_2__
 
@@ -43,6 +35,24 @@ pd.set_option('display.max_rows', 100)
 # Also updates the continuous station selection to account for this
 #
 # Use nearest interpolation instead of manually adjusting bits to avoid boundary line
+
+import pandas as pd
+import numpy as np
+from itertools import product
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF
+from sklearn.gaussian_process.kernels import RationalQuadratic
+from sklearn.gaussian_process.kernels import WhiteKernel
+from sklearn.model_selection import cross_validate
+from sklearn.model_selection import GroupKFold
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+import os
+import datetime
+import time
+
+pd.set_option('display.max_columns', 50)
+pd.set_option('display.max_rows', 100)
 
 #Working dir
 if(os.path.basename(os.getcwd())[0:18]!="Data Visualization"):
@@ -82,15 +92,6 @@ outputs[1]="Data/Space_and_time_agg/agg_daily_morning_coastal_features_4_22_2023
 
 for path in paths.values():
     assert(os.path.exists(path))
-# -
-
-# 1. This notebook uses cross validation where train and test sets are chosen based on stations, which allows the estimation of CV-error reconstructing entire time series, not just filling in existing time series. The dropping of data not given an embay_dist for the summer average below (which may be temporary) ensures that all time series are interpolatable, so the interesting question is recreating an entirely missing time series (partial reconstruction can be assessed seperately).
-#
-#
-# 2. In theory, alpha values still differ between continuous and discrete stations, but this time less so, because the discrete variation is just the variation that could be seen within one day. On top of this, there's a better arguement that the error between discrete stations is uncorrelated. However, in practice, to simplify the use of scikit's cross-validation function, we use a uniform alpha value (double the previous continuous alpha from Space model) to begin with.
-#
-#
-# 3. (NOTE) "df" is the overall dataset, and remains a global variable throughout the duration of the notebook
 
 # +
 #Global Params
@@ -304,26 +305,28 @@ opt_gp2.predict([[-71.954278,41.277306, 182, 0.0]])
 
 # ## All years
 
+#Dictionaries for models
+ymeans, gps = {}, {}
+
 # +
 #Optimal params
+#years
+years=[2020]
 
 #kernel
 kernel =1*RBF([1]*predictors, length_scale_bounds=lsb) + 1*RationalQuadratic(length_scale_bounds=lsb)
 
 #Noise alpha
 noise_alpha=.25
+# -
 
-# +
 #Building gp using build function above
-ymeans, gps = {}, {}
-
 for year in years:
     start_time=datetime.datetime.now()
     gps[year], ymeans[year] = build_model(predictors, year, kernel, noise_alpha, nro)
     end_time=datetime.datetime.now()
     print(year)
     print(end_time-start_time)
-# -
 
 #Getting normalization factors as dictionary (to adjust length scales for comparison)
 norms={}
@@ -337,18 +340,24 @@ for year in years:
     X_train=np.array(X_train, dtype=np.float64)
     
     norms[year]=np.std(X_train, axis=0)
+    
     print(np.std(X_train, axis=0))
-    plt.hist(X_train[:, 0])
+    
+    #Checking on input params
+    check="Longitude"
+    i=ind_var.index(check)
+    plt.hist(X_train[:, i])
+    plt.title(str(year) + " " + check + " Distribution")
     plt.show()
-    print(max(X_train[:, 0]))
-    print(min(X_train[:, 0]))
-
-df.loc[df["Longitude"]>0]
+    print(max(X_train[:, i]))
+    print(min(X_train[:, i]))
 
 for year in years:
     params = gps[year].kernel_.get_params()
     #print(params)
     print(np.multiply(norms[year], params["k1__k2__length_scale"]))
+
+gps[2019].kernel_.get_params()
 
 gps[2020].kernel_.get_params()
 

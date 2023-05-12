@@ -115,9 +115,7 @@ agg_summer_means=pd.concat(list(aggregated.values()), axis=0)
 
 agg_summer_means
 
-# +
-#agg_summer_means.to_csv("Data/Space_and_time_agg/agg_summer_means_daily.csv")
-# -
+agg_summer_means.to_csv("Data/Space_and_time_agg/agg_summer_means_daily.csv")
 
 # # Daily Summer Morning
 
