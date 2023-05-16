@@ -84,7 +84,7 @@ lsb1=(1e-5, 1e5)
 lsb2=(1, 1e5)
 
 #Noise
-alphas=[.15, .2, .25]
+alphas=[.2]
 
 #Alpha is loaded into first kernel for now
 kernels = [1*RBF([1]*predictors, length_scale_bounds=lsb1) + 1*RationalQuadratic(length_scale_bounds=lsb2)]

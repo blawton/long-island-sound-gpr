@@ -6,6 +6,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
 from sklearn.gaussian_process.kernels import RationalQuadratic
 from sklearn.gaussian_process.kernels import WhiteKernel
+from sklearn.gaussian_process.kernels import Matern
 from sklearn.model_selection import cross_validate
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import GroupKFold
@@ -70,7 +71,10 @@ nro=15
 #In this file, kernel, lsb, and noise_alpha are set
 lsb=(1e-5, 1e5)
 
-kernel=1*RBF([1]*predictors, length_scale_bounds=lsb) + 1*RationalQuadratic(length_scale_bounds=lsb)
+kernels=[1*RBF([1]*predictors, length_scale_bounds=lsb) + 1*RationalQuadratic(length_scale_bounds=lsb),
+         1 * Matern([1]*predictors, nu=1.5, length_scale_bounds=lsb) + 1 * RationalQuadratic(length_scale_bounds=lsb),
+         1 * Matern([1]*predictors, nu=.5, length_scale_bounds=lsb) + 1 * RBF([1]*predictors, length_scale_bounds=lsb)
+        ]
 
 noise_alpha=.25
 # -
@@ -107,13 +111,13 @@ for i, (train_index, test_index) in enumerate(df_folds):
 CV_results={}
 CV_best_estimators={}
 
-gp = GaussianProcessRegressor(kernel=kernel, alpha=noise_alpha, n_restarts_optimizer=nro)
+gp = GaussianProcessRegressor(alpha=noise_alpha, n_restarts_optimizer=nro)
 
 pipe = Pipeline([('scaler', StandardScaler()),
                  ('model', gp)])
 
 parameters = {
-    "scaler__with_std": [True, False]
+    "model__kernel": kernels
 }
 
 clf = GridSearchCV(pipe, param_grid=parameters, cv=GroupKFold(n_splits=folds), n_jobs=-1, scoring=scores, refit=priority_score)
@@ -135,7 +139,7 @@ for year in years:
     CV_best_estimators[year] =clf.best_estimator_
     
     #Saving to file
-    pd.DataFrame(CV_results[year]).to_csv("Results/Pre_Processing_Optimization_time_results" + str(year)+ ".csv")
+    pd.DataFrame(CV_results[year]).to_csv("Results/Optimization_with_Pre_Processing_results_" + str(year)+ ".csv")
     
     print(year)
 # -

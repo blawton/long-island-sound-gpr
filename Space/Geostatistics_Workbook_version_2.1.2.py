@@ -5,10 +5,14 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
 from sklearn.gaussian_process.kernels import RationalQuadratic
 from sklearn.gaussian_process.kernels import WhiteKernel
+from sklearn.gaussian_process.kernels import Matern
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import os
 plt.rcParams["figure.figsize"]=(20, 20)
+#Imported specifically to redefine max_iter:
+from sklearn.utils.optimize import _check_optimize_result
+from scipy import optimize
 
 from osgeo import gdal
 import numpy as np
@@ -89,9 +93,34 @@ outputs[1]="Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
 
 for path in paths.values():
     assert(os.path.exists(path))
+
+
 # -
 
-# # Preparing and Testing Data
+class MyGPR(GaussianProcessRegressor):
+    def __init__(self, *args, max_iter=2e05, gtol=1e-06, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._max_iter = max_iter
+        self._gtol = gtol
+
+    def _constrained_optimization(self, obj_func, initial_theta, bounds):
+        if self.optimizer == "fmin_l_bfgs_b":
+            opt_res = optimize.minimize(obj_func, initial_theta, method="L-BFGS-B", jac=True, bounds=bounds, options={'maxiter':self._max_iter, 'gtol': self._gtol})
+            _check_optimize_result("lbfgs", opt_res)
+            theta_opt, func_min = opt_res.x, opt_res.fun
+        elif callable(self.optimizer):
+            theta_opt, func_min = self.optimizer(obj_func, initial_theta, bounds=bounds)
+        else:
+            raise ValueError("Unknown optimizer %s." % self.optimizer)
+        return theta_opt, func_min
+
+
+#Global Params
+nro=20
+cont_error=.25
+discrete_error=1.44
+
+# # Preparing and Testing Data (only run when data is updated)
 
 # ## Importing coastal features
 
@@ -207,9 +236,9 @@ working=df.loc[df["Year"]==2019]
 plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
 plt.show()
 
-# # Checking on stations in each year and outputting to file
+# ## Checking on stations in each year and outputting to file
 
-# ## 2019
+# ### 2019
 
 display_array = np.where(array>0, .25, 0)
 display_array[0,0]=1
@@ -222,7 +251,7 @@ plt.title("Sampling Locations 2019", size= "xx-large")
 plt.axis("off")
 plt.show()
 
-# ## 2020
+# ### 2020
 
 plt.figure()
 plt.imshow(display_array)
@@ -232,7 +261,7 @@ plt.title("Sampling Locations 2020", size= "xx-large")
 plt.axis("off")
 plt.show()
 
-# ## 2021
+# ### 2021
 
 plt.figure()
 plt.imshow(display_array)
@@ -306,21 +335,26 @@ best_fit(df, "Longitude", "Temperature (C)")
 
 # We prepare the data the same for the two parameter and three parameter regressions (which are the same code with the variable "predictors" changed from 2 to 3) so that we can compare the rmse on the same cross validation folds to try eliminating chance from the comparison as much as possible
 
+#Reading in output of above section
+df=pd.read_csv(outputs[1], index_col=0)
+df.head()
+
 #Dropping nas
 print(len(df))
 df.dropna(subset=["Station ID", "Longitude", "Latitude", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
 
-#Getting list of continuous organizations for alphas (move to YAML)
+#Getting list of continuous organizations and stations for alphas (move to YAML)
 cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
+cont_st=pd.unique(df.loc[df["Organization"].isin(cont_orgs), "Station ID"])
+cont_st
 
 #Testing alpha logic
-cont_error=.1
-discrete_error=1.44
 orgs=df.loc[df["Year"]==2019, "Organization"].values
 np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
 
 
+# +
 #Function for iteration
 def cross_validate(predictors, folds, year, kernel, noise, trials):
     
@@ -387,13 +421,13 @@ def cross_validate(predictors, folds, year, kernel, noise, trials):
             y_means[i]=np.mean(y_train[i])
             y_train[i]=y_train[i]-y_means[i]
 
-            #Normalizing predictors (X) for training sets
-            #X_test[i]=X_test[i] - np.mean(X_test[i], axis=0)
-            #X_test[i]=X_test[i] / np.std(X_test[i], axis=0)
+#             #Normalizing predictors (X) for training sets
+#             X_test[i]=X_test[i] - np.mean(X_test[i], axis=0)
+#             X_test[i]=X_test[i] / np.std(X_test[i], axis=0)
 
-            #Normalizing predictors (X) for testing sets
-            #X_train[i]=X_train[i] - np.mean(X_train[i], axis=0)
-            #X_train[i]=X_train[i] / np.std(X_train[i], axis=0)
+#             #Normalizing predictors (X) for testing sets
+#             X_train[i]=X_train[i] - np.mean(X_train[i], axis=0)
+#             X_train[i]=X_train[i] / np.std(X_train[i], axis=0)
 
         #Running model on each fold
         cross_v={}
@@ -406,9 +440,9 @@ def cross_validate(predictors, folds, year, kernel, noise, trials):
             
             #Constructing Process
             if noise:
-                gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alphas[i])
+                gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=nro, alpha=alphas[i])
             else:
-                gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15)
+                gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=nro)
             
             #Training Process
             gaussian_process.fit(X_train[i], y_train[i])
@@ -445,6 +479,13 @@ def cross_validate(predictors, folds, year, kernel, noise, trials):
     return(results)
 
 
+# -
+
+#Testing Parameters
+years=[2019, 2020, 2021]
+folds=10
+trials=5
+
 # +
 #Testing loop
 kernel = 1 * RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-5, 1e2))
@@ -455,11 +496,9 @@ results
 
 print(results.mean(axis=0))
 
-# # Actual Testing
+# # Initial Testing (determines number of params)
 
-years=[2019, 2020, 2021]
-folds=10
-trials=1
+filtered_results=pd.DataFrame()
 
 # ## RBF 2 predictors
 
@@ -514,9 +553,11 @@ print(agg.mean(axis=0))
 
 # ## Rational Quadratic 3 predictors
 
+lsb=(1e-5, 1e5)
+
 # +
 predictors = 3
-kernel = 1 * RationalQuadratic(length_scale=1.0, length_scale_bounds=(1e-5, 1e2))
+kernel = 1 * RationalQuadratic(length_scale=1.0, length_scale_bounds=lsb)
 noise = False
 
 agg=pd.DataFrame()
@@ -529,9 +570,40 @@ for year in years:
 
 print(agg.mean(axis=0))
 
-# ## Matern Kernel (2 predictors)
+agg["kernel"]=kernel
+agg["lsb"]=[lsb]*len(agg)
+agg["Year"]=[year for year in years for i in range(trials)]
+agg
 
-from sklearn.gaussian_process.kernels import Matern
+filtered_results=pd.concat([filtered_results, agg])
+
+lsb=(1e-3, 1e5)
+
+# +
+predictors = 3
+kernel = 1 * RationalQuadratic(length_scale=1.0, length_scale_bounds=lsb)
+noise = False
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, kernel, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+print(agg.mean(axis=0))
+
+agg["kernel"]=kernel
+agg["lsb"]=[lsb]*len(agg)
+agg["Year"]=[year for year in years for i in range(trials)]
+agg
+
+filtered_results=pd.concat([filtered_results, agg])
+
+filtered_results.groupby(["lsb"]).mean()
+
+# ## Matern Kernel (2 predictors)
 
 # +
 predictors = 2
@@ -548,7 +620,26 @@ for year in years:
 
 print(agg.mean(axis=0))
 
-# ## Matern Kernel (3 predictors)
+# # 3 Predictor Only Tests
+
+# ## RBF + RQ (3 predictors)
+
+# +
+predictors = 3
+kernel = 1 * RBF(length_scale=[1e-1, 1e-1, 1e-2], length_scale_bounds=(1e-5, 1e5)) + 1 * RationalQuadratic(length_scale=1.0, length_scale_bounds=(1e-5, 1e2))
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, kernel, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+print(agg.mean(axis=0))
+
+# ## Matern Kernel (3 predictors nu = 1.5)
 
 # +
 predictors = 3
@@ -565,4 +656,151 @@ for year in years:
 
 print(agg.mean(axis=0))
 
+# ## Matern Kernel (3 predictors nu = 2.5)
 
+# +
+predictors = 3
+kernel = 1 * Matern(length_scale=[1e-1, 1e-1, 1e-2], nu=2.5, length_scale_bounds=(1e-5, 1e5))
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, kernel, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+print(agg.mean(axis=0))
+
+# ## Matern Kernel (3 predictors nu = 0.5)
+
+# +
+predictors = 3
+kernel = 1 * Matern(length_scale=[1, 1, 1], nu=.5, length_scale_bounds=(1e-5, 1e5))
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, kernel, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+print(agg.mean(axis=0))
+
+# ## Matern Kernel (3 predictors, nu = 0.5, higher max_iter)
+
+# +
+predictors = 3
+kernel = 1 * Matern(length_scale=[1, 1, 1], nu=.5, length_scale_bounds=(1e-2, 1e5))
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, kernel, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+print(agg.mean(axis=0))
+
+# ## Matern(nu=1.5)+RQ
+
+# +
+predictors = 3
+kernel = 1 * Matern(length_scale=[1e-1, 1e-1, 1e-2], nu=1.5, length_scale_bounds=(1e-3, 1e7)) + 1 * RationalQuadratic(length_scale=1.0, length_scale_bounds=(1e-3, 1e2), alpha_bounds=(1e-5, 1e7))
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, kernel, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+print(agg.mean(axis=0))
+
+# ## Matern (nu .5) + RQ
+
+# +
+predictors = 3
+kernel = 1 * Matern(length_scale=[1, 1, 1], nu=.5, length_scale_bounds=(1e-5, 1e5)) + 1 * RationalQuadratic(length_scale=1.0, length_scale_bounds=(1e-5, 1e5))
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, kernel, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+print(agg.mean(axis=0))
+
+agg["kernel"]=kernel
+agg["lsb"]=[lsb]*len(agg)
+agg["Year"]=[year for year in years for i in range(trials)]
+agg
+
+filtered_results=pd.concat([filtered_results, agg])
+
+filtered_results
+
+# ## Matern (nu 1.5) + RBF
+
+# +
+predictors = 3
+kernel = 1 * Matern(length_scale=[1e-1, 1e-1, 1e-2], nu=1.5, length_scale_bounds=(1e-5, 1e5)) + 1 * RBF(length_scale=[1e-1, 1e-1, 1e-2], length_scale_bounds=(1e-5, 1e5))
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, kernel, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+print(agg.mean(axis=0))
+
+# ## Matern (nu .5) + RBF
+
+# +
+predictors = 3
+kernel = 1 * Matern(nu=.5, length_scale_bounds=(1e-5, 1e5)) + 1 * RBF(length_scale_bounds=(1e-5, 1e5))
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, kernel, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+print(agg.mean(axis=0))
+
+# # 3 Kernels Added
+
+# +
+predictors = 3
+kernel = 1 * Matern(length_scale=[1, 1, 1], nu=.5, length_scale_bounds=(1e-5, 1e5)) + 1 * RBF(length_scale=[1, 1, 1], length_scale_bounds=(1e-5, 1e5)) + 1 * RationalQuadratic(length_scale=1.0, length_scale_bounds=(1e-5, 1e5))
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, kernel, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+print(agg.mean(axis=0))
+
+# # Conclusion
+
+# It seems like a simple approach using the rational quadratic kernel is best
