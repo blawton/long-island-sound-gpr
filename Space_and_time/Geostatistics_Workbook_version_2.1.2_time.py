@@ -170,35 +170,6 @@ def build_model(predictors, year, kernel, alpha, nro):
 
 # -
 
-# # Preparing Data (only needs to be run once)
-
-#Reading in time data
-df=pd.read_csv(paths[2], index_col=0)
-df.head()
-
-#Ensuring no reuse of station ID between orgs
-assert(len(df.drop_duplicates(subset=["Station ID"]))==len(df.drop_duplicates(subset=["Station ID", "Organization"])))
-
-
-#Reading in data to merge with "time" data
-to_merge=pd.read_csv(paths[3], index_col=0)
-to_merge.head()
-
-df=df.merge(to_merge[["Station ID", "Year", 
-                     "xPixel", "yPixel", "embay_dist"]], how="left",
-           on = ["Station ID", "Year"])
-df.head()
-
-#Proportion of data not geotagged before
-#should be minimal and can be dropped for now
-print(len(df.loc[df["embay_dist"].isna(), "Station ID"])/len(df))
-print(len(df))
-df=df.loc[~df["embay_dist"].isna()].copy()
-print(len(df))
-
-#Outputting
-df.to_csv(outputs[1])
-
 # # Reading in data
 
 #This is the source of the model's predictions

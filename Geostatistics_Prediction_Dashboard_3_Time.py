@@ -98,91 +98,15 @@ paths[7] = config["Prediction_Dashboard_output"]
 #CSV
 
 #Training Data
-paths[5] = "Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
+paths[5] = "Data/Space_and_time_agg/agg_daily_morning_coastal_features_5_17_2023.csv"
 
 for path in paths.values():
     assert os.path.exists(path), path
 # -
 
-# # Mainpulating Coastal Distance (Only Do Once)
+# # Mainpulating Coastal Distance
 
-#Getting open sound as formatted in ArcGIS Pro
-open_sound = gdal.Open(paths[1])
-band=open_sound.GetRasterBand(1)
-array_os=band.ReadAsArray()
-
-#Getting all sound from state lines (solely to remove Island from Mystic and other land patches)
-all_sound = gdal.Open(paths[2])
-band=all_sound.GetRasterBand(1)
-array_all=band.ReadAsArray()
-
-#embayment distance including only MEASURED Vaudrey embayments
-embay_dist = gdal.Open(paths[3])
-
-gt=embay_dist.GetGeoTransform()
-gt
-
-proj=embay_dist.GetProjection()
-proj
-
-band=embay_dist.GetRasterBand(1)
-array_embay_dist=band.ReadAsArray()
-
-pixelwidth=gt[1]
-pixelheight=-gt[5]
-pixelheight
-
-xOrigin = gt[0]
-yOrigin = gt[3]
-
-cols = embay_dist.RasterXSize
-rows = embay_dist.RasterYSize
-cols
-
-array_os
-
-array_embay_dist
-
-# +
-# #Displaying crucial regions
-# plt.figure()
-# plt.imshow(np.isnan(array))
-# plt.figure()
-# plt.imshow(array==0)
-# plt.figure()
-# plt.imshow(array<0)
-# -
-
-#Starting visualization
-plt.imshow(array_embay_dist)
-
-#Setting open sound (non vaudrey embayments) to 0
-array=np.where(array_os>=0, 0, array_embay_dist)
-
-#Getting rid of mystic (state boundaries need to be double checked with os to avoid making fisher's island embayments)
-array=np.where(array_all!=0, array, np.nan)
-array=np.where(np.isnan(array), array_os, array)
-
-#Setting negatives to nan for visualization
-array=np.where(array<0, np.nan, array)
-
-#Final Array only for embayments
-embay_only=np.where(array_embay_dist>0, array, np.nan)
-plt.imshow(embay_only)
-plt.axis("off")
-
-#Outputting Final Embayment Distance to avoid repeating above
-driver = gdal.GetDriverByName("GTiff")
-driver.Register()
-outds = driver.Create(paths[6], xsize=cols, ysize=rows, bands=1, eType=gdal.GDT_Int16)
-outds.SetGeoTransform(gt)
-outds.SetProjection(proj)
-outband = outds.GetRasterBand(1)
-outband.WriteArray(embay_only)
-outband.SetNoDataValue(np.nan)
-outband.FlushCache()
-outband=None
-outds=None
+# Already done in spatial model
 
 # # Reading in Data and Building in Model
 
@@ -228,7 +152,7 @@ df.loc[df["Organization"]=="Dominion"]
 
 #Dropping nas
 print(len(df))
-df.dropna(subset=["Station ID", "Longitude", "Latitude", "Temperature (C)", "Organization"], inplace=True)
+df.dropna(subset=["Station ID", "Day", "embay_dist", "Longitude", "Latitude", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
 
 # +
@@ -241,28 +165,25 @@ print(len(df))
 
 pd.unique(df["Organization"])
 
-#Getting list of continuous organizations for alphas (move to YAML)
-cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
+# +
+#Model Params
+station_var=["Station ID"]
 
-#Testing alpha logic
-cont_error=.25
-discrete_error=1.44
-orgs=df.loc[df["Year"]==2019, "Organization"].values
-np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
+ind_var=["Longitude", "Latitude", "embay_dist", "Day"]
 
+dep_var = ["Temperature (C)"]
+
+predictors=len(ind_var)
+
+
+# -
 
 #Building Model (adapted to dashboard from "Geostatistics_Workbook_version_2.1.2.ipynb")
-def build_model(predictors, year, kernel, noise, discrete_error, cont_error):
+def build_model(predictors, year, kernel, noise, alpha):
     
     #Selecting data from proper year
-    period=df.loc[df["Year"]==year, ["Station ID", "Longitude", "Latitude", "embay_dist", "Temperature (C)"]]
+    period=df.loc[df["Year"]==year, station_var+ind_var+dep_var]
     data=period.values
-
-    #Designing an alpha matrix based on which means are from discrete data
-    orgs=df.loc[df["Year"]==year, "Organization"].values
-
-    #applying mask
-    alpha=np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
     
     #Partitioning X and y
     
@@ -277,13 +198,9 @@ def build_model(predictors, year, kernel, noise, discrete_error, cont_error):
     y_mean=np.mean(y_train)
     y_train=y_train-y_mean
 
-    #Normalizing predictors (X) for training sets
-    #X_test[i]=X_test[i] - np.mean(X_test[i], axis=0)
-    #X_test[i]=X_test[i] / np.std(X_test[i], axis=0)
-
     #Normalizing predictors (X) for testing sets
-    #X_train[i]=X_train[i] - np.mean(X_train[i], axis=0)
-    #X_train[i]=X_train[i] / np.std(X_train[i], axis=0)
+    #X_train=X_train - np.mean(X_train, axis=0)
+    #X_train=X_train / np.std(X_train, axis=0)
 
     #Constructing Process
     if noise:
@@ -300,7 +217,7 @@ def build_model(predictors, year, kernel, noise, discrete_error, cont_error):
 # # Setting Up Output Heatmap
 
 #Defining Resolution of Output Heatmap
-stride=2
+stride=5
 
 
 def get_heatmap_inputs(stride, coastal_map, gt):
@@ -347,18 +264,23 @@ sdmin=0
 sdmax=1.2
 
 
-def model_output(discrete_error, cont_error, year, stride, kernel):
+def model_output(day, alpha, year, stride, kernel, predictors):
     
     #Building Process
     kernel = kernel
     
-    process, mean =build_model(3, year, kernel, True, discrete_error, cont_error)
+    process, mean =build_model(predictors, year, kernel, True, alpha)
     
     #Building Heatmap
     X_pred, resampled, grid_shape = get_heatmap_inputs(stride, array, gt)
     
     #Narrowing to where embay_dist is defined
     X_pred=pd.DataFrame(X_pred)
+    X_pred["Day"]=day
+    
+    #Xpred columns must match order of indep vars
+    print(X_pred.head)
+    
     y_pred=pd.DataFrame(index=X_pred.index)
 
     #Filtering to prediction region
@@ -426,42 +348,69 @@ plt.rcParams["figure.figsize"]=(30, 25)
 
 # +
 #Params
-parameters=3
-discrete_error=1.44
-cont_error=.25
-stride=2
+years=[2019, 2020, 2021]
+predictors=4
+alpha=.25
+stride=5
 lsb=(1e-5, 1e5)
-kernel = 1 * RBF([1]*parameters, length_scale_bounds=lsb)
+
+#Day for prediction
+day=196
 
 #Dicts for storage of models
 kernels = {}
 errors= {}
 models = {}
+x_stds = {}
 # -
+
+#Getting x_stds for initial kernel guess
+for year in years:
+    period=df.loc[df["Year"]==year, station_var+ind_var+dep_var]
+    data=period.values
+
+    #Partitioning X and y
+
+    X_train, y_train = data[:, 1:predictors+1], data[:, -1]
+    print(X_train.shape)
+
+    #Ensuring proper dtypes
+    X_train=np.array(X_train, dtype=np.float64)
+    y_train=np.array(y_train, dtype=np.float64)
+
+    #Demeaning y
+    y_mean=np.mean(y_train)
+    y_train=y_train-y_mean
+
+    #Normalizing predictors (X) for testing sets
+    X_train=X_train - np.mean(X_train, axis=0)
+    x_stds[year]=np.std(X_train, axis=0)
+
+#Testing output
+x_stds[2019]
 
 # ## 2019
 
 year=2019
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel) 
+kernel = 1.52**2 * RBF(length_scale=[0.884, 0.06, 0.0487, 0.00001], length_scale_bounds="fixed") + Matern(length_scale=[1]*4, length_scale_bounds=lsb)
+kernels[year], errors[year], models[year] = model_output(day, alpha, year, stride, kernel, predictors) 
+
+kernels[2019]
 
 # ## 2020
 
 year=2020
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel) 
+kernel = 1 * RBF(x_stds[year], length_scale_bounds=lsb)
+kernels[year], errors[year], models[year] = model_output(day, alpha, year, stride, kernel, predictors) 
 
 # ## 2021
 
-#Params
 year=2021
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel) 
-
-# ## Kernels
-
-#(this time of the preferred modes (where 2019 is similar to 2020))
-kernels 
+kernel = 1 * RBF(x_stds[year], length_scale_bounds=lsb)
+kernels[year], errors[year], models[year] = model_output(day, alpha, year, stride, kernel, predictors) 
 
 # # Outputting TIFFs
 

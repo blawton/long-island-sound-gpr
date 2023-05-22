@@ -120,162 +120,7 @@ nro=20
 cont_error=.25
 discrete_error=1.44
 
-# # Preparing and Testing Data (only run when data is updated)
-
-# ## Importing coastal features
-
-#Using the updated file without points removed
-embay_dist = gdal.Open(paths[1])
-
-gt=embay_dist.GetGeoTransform()
-gt
-
-proj=embay_dist.GetProjection()
-proj
-
-band=embay_dist.GetRasterBand(1)
-array=band.ReadAsArray()
-
-pixelwidth=gt[1]
-pixelheight=-gt[5]
-pixelheight
-
-xOrigin = gt[0]
-yOrigin = gt[3]
-
-cols = embay_dist.RasterXSize
-rows = embay_dist.RasterYSize
-cols
-
-# ## Appending coastal distance to data
-
-df=pd.read_csv(paths[2], index_col=0)
-df
-
-# #Drops URI and USGS data (to avoid updates implemented in 2.2)
-# df=df.loc[(df["Organization"]!="URI") & (df["Organization"]!="USGS_Discrete")].copy()
-pd.unique(df["Organization"])
-
-#Checking on longitude ranges
-max(df["Longitude"])-min(df["Longitude"])
-
-df["xPixel"]=((df["Longitude"] - xOrigin) / pixelwidth).astype(int)
-df["yPixel"]=(-(df["Latitude"] - yOrigin) / pixelheight).astype(int)
-
-# +
-# #Making sure new STS data is included
-# df.loc[df["Year"]==2021]
-
-# +
-# #Fixing stations on the boundary line (only within Eastern Sound Window for now)
-
-# #NIR-I-1B-L
-# df.loc[df["Station ID"]=="NIR-I-1B-L", "xPixel"]-=10
-# #CFE-STS-NIR-O-06
-# df.loc[df["Station ID"]=="CFE-STS-NIR-O-06", "xPixel"]+=10
-# #CFE-STS-NIR-O-08
-# df.loc[df["Station ID"]=="CFE-STS-NIR-O-08", "xPixel"]-=5
-# #CFE-STS-CTR-04
-# df.loc[df["Station ID"]=="CFE-STS-CTR-04", "xPixel"]+=10
-# #USGS_AT_SAFE_HARBOR_MARINA
-# df.loc[df["Station ID"]=="USGS_AT_SAFE_HARBOR_MARINA", "xPixel"]-=5
-# -
-
-df["embay_dist"]=df.apply(lambda x: array[x["yPixel"], x["xPixel"]], axis=1)
-
-#Getting range of distances in df to ensure its similar to masked
-max(df["embay_dist"])-min(df["embay_dist"])
-
-# +
-#Getting locations where dist is null or 0
-print(pd.unique(df.loc[df["embay_dist"].isna(), "Station ID"]))
-
-pd.unique(df.loc[df["embay_dist"]==0, "Station ID"])
-# -
-
-# ## Interpolating Stations caught on Coastal Boundary
-
-nonzero_ind=np.argwhere(array!=0)
-nonzero_ind.shape
-nonzero_ind
-
-nonzero_values = [array[nonzero_ind[i, 0], nonzero_ind[i, 1]] for i in np.arange(nonzero_ind.shape[0])]
-nonzero_values
-
-interp =  NearestNDInterpolator(nonzero_ind, nonzero_values)
-
-zeroes = df.loc[df["embay_dist"]==0]
-df.loc[df["embay_dist"]==0, "embay_dist"]=interp(zeroes["yPixel"], zeroes["xPixel"])
-df.loc[df["embay_dist"]==0]
-
-#Getting range of distances in df to ensure its similar to masked
-max(df["embay_dist"])-min(df["embay_dist"])
-
-#Displaying figure along with all locations
-plt.figure()
-plt.imshow(array)
-working=df
-plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
-plt.show()
-
-#Stations in non-existent embayment (on final model)
-gol=df.loc[df["Station ID"].str.contains("GOL")]
-print(gol)
-df.drop(gol.index, axis=0, inplace=True)
-gol=df.loc[df["Station ID"].str.contains("GOL")]
-print(gol)
-
-#Fixing East Beach and Barleyfield Cove (These actually should have embay_dist=0)
-df.loc[df["Station ID"]=="East Beach", "embay_dist"] = 0
-df.loc[df["Station ID"]=="Barleyfield Cove", "embay_dist"] = 0
-
-#Checking on stations in 2019
-plt.figure()
-plt.imshow(array)
-working=df.loc[df["Year"]==2019]
-plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
-plt.show()
-
-# ## Checking on stations in each year and outputting to file
-
-# ### 2019
-
-display_array = np.where(array>0, .25, 0)
-display_array[0,0]=1
-
-plt.figure()
-plt.imshow(display_array)
-working=df.loc[df["Year"]==2019]
-plt.scatter(working["xPixel"], working["yPixel"], s=2, c="Red")
-plt.title("Sampling Locations 2019", size= "xx-large")
-plt.axis("off")
-plt.show()
-
-# ### 2020
-
-plt.figure()
-plt.imshow(display_array)
-working=df.loc[df["Year"]==2020]
-plt.scatter(working["xPixel"], working["yPixel"], s=2, c="Red")
-plt.title("Sampling Locations 2020", size= "xx-large")
-plt.axis("off")
-plt.show()
-
-# ### 2021
-
-plt.figure()
-plt.imshow(display_array)
-working=df.loc[df["Year"]==2021]
-plt.scatter(working["xPixel"], working["yPixel"], s=2, c="Red")
-plt.title("Sampling Locations 2021", size= "xx-large")
-plt.axis("off")
-plt.show()
-
-print(array.shape)
-
-df.to_csv(outputs[1])
-
-# ## Linear Regressions
+# ## Linear Regressions (move to end)
 
 plt.rcParams["figure.figsize"]=(20, 6)
 
@@ -479,12 +324,13 @@ def cross_validate(predictors, folds, year, kernel, noise, trials):
     return(results)
 
 
-# -
-
-#Testing Parameters
+# +
+#Testing Parameters and df for results
 years=[2019, 2020, 2021]
 folds=10
 trials=5
+
+filtered_results=pd.DataFrame()
 
 # +
 #Testing loop
@@ -497,8 +343,6 @@ results
 print(results.mean(axis=0))
 
 # # Initial Testing (determines number of params)
-
-filtered_results=pd.DataFrame()
 
 # ## RBF 2 predictors
 
@@ -550,6 +394,48 @@ for year in years:
 # -
 
 print(agg.mean(axis=0))
+
+#Changing years for test of 2019/2020
+years=[2019]
+
+# +
+#Mode 1 for 2019
+predictors = 3
+fixed_kernel_1= 1.39**2 * RBF(length_scale=[0.118, 2.17e+03, 0.0249], length_scale_bounds="fixed")
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, fixed_kernel_1, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+agg
+
+# +
+#Mode 2 for 2019
+predictors = 3
+fixed_kernel_2= 1.52**2 * RBF(length_scale=[0.884, 0.06, 0.0487], length_scale_bounds="fixed")
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, fixed_kernel_2, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+
+# +
+#The preferred mode has siginificantly better RMSE!
+# -
+
+agg
+
+agg.mean()
+
+
 
 # ## Rational Quadratic 3 predictors
 
@@ -707,6 +593,40 @@ for year in years:
 
 print(agg.mean(axis=0))
 
+# +
+predictors = 3
+fixed_kernel_1= 1.92**2 * Matern(length_scale=[4.62, 0.44, 0.255], nu=0.5, length_scale_bounds="fixed")
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, fixed_kernel_1, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+agg
+
+# +
+predictors = 3
+fixed_kernel_2= 2.07**2 * Matern(length_scale=[0.966, 8.76e+03, 0.195], nu=0.5, length_scale_bounds="fixed")
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, fixed_kernel_2, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+agg
+
+agg.mean()
+
+
+
 # ## Matern(nu=1.5)+RQ
 
 # +
@@ -741,14 +661,62 @@ for year in years:
 
 print(agg.mean(axis=0))
 
-agg["kernel"]=kernel
-agg["lsb"]=[lsb]*len(agg)
-agg["Year"]=[year for year in years for i in range(trials)]
+# +
+#Fixed Kernel_1
+
+# +
+predictors = 3
+fixed_kernel_1= 2.37**2 * Matern(length_scale=[1.9, 1.84e+03, 0.303], nu=0.5, length_scale_bounds="fixed") + 0.00316**2 * RationalQuadratic(alpha=0.872, length_scale=575, length_scale_bounds="fixed")
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, fixed_kernel_1, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
 agg
 
-filtered_results=pd.concat([filtered_results, agg])
+agg.mean()
 
-filtered_results
+# +
+#Fixed Kernel 2
+
+# +
+predictors = 3
+fixed_kernel_2= 2.36**2 * Matern(length_scale=[2.18, 260, 0.289], nu=0.5, length_scale_bounds="fixed") + 0.00316**2 * RationalQuadratic(alpha=2.52e+04, length_scale=998, length_scale_bounds="fixed")
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, fixed_kernel_2, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+agg
+
+agg.mean()
+
+# +
+predictors = 3
+fixed_kernel_3= 0.632**2 * Matern(length_scale=[47.2, 1.98e+03, 0.0871], nu=0.5, length_scale_bounds="fixed") + 1.02**2 * RationalQuadratic(alpha=1.05, length_scale=0.0918, length_scale_bounds="fixed")
+noise = True
+
+agg=pd.DataFrame()
+
+for year in years:
+    results=cross_validate(predictors, folds, year, fixed_kernel_3, noise, trials)
+    agg=pd.concat([agg, results])
+    print(agg)
+# -
+
+agg
+
+agg.mean()
 
 # ## Matern (nu 1.5) + RBF
 
