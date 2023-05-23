@@ -1,6 +1,5 @@
 # long-island-sound-gpr
-Preliminary python code and parameter optimization for forthcoming paper supported by my ORISE fellowship.  General approach is a Gaussian Process Regression of temperatures within embayments of the Long Island Sound, partially inspired by [3]
-The goal of this model is to have fine-grained (within embayment) temperature data in order to assess susceptibility of eelgrass habitats to warm temperatures and climate change.
+Preliminary python code and parameter optimization for forthcoming paper supported by my ORISE fellowship.  General approach is a Gaussian Process Regression of temperatures within embayments of the Long Island Sound, partially inspired by other GPR applications to water quality parameters, such as [1] and [6]. The goal of this model is to have fine-grained (within embayment) temperature data in order to assess susceptibility of eelgrass habitats to warm temperatures and climate change.
 
 __Acknowledgement of Support:__
 This research was supported in part by an appointment to the U.S. Environmental Protection Agency (EPA) Research Participation Program administered by the Oak Ridge Institute for Science and Education (ORISE) through an interagency agreement between the U.S. Department of Energy (DOE) and the U.S. Environmental Protection Agency. ORISE is managed by ORAU under DOE contract number DE-SC0014664. All opinions expressed herein are the author's and do not necessarily reflect the policies and views of US EPA, DOE, or ORAU/ORISE.
@@ -14,22 +13,38 @@ It is also worth noting that all the python code here, with the exception of a f
 
 ## References
 
+<a id="1">[1]</a> 
+Durham, C. et al (2019).
+Process-Based Statistical Models Predict Dynamic Estuarine Salinity. 
+Lagoon Environments Around the World - A Scientific Perspective
+
+Ideas for combinations of kernels:
+
+<a id="1">[2]</a> 
+Duvenaud, David. 
+[The Kernel Cookbook: Advice on Covariance functions](https://www.cs.toronto.edu/~duvenaud/cookbook/)
+
 Code for reading [NWIS](https://waterdata.usgs.gov/nwis?) rdb text files was adapted from:
 
-<a id="1">[1]</a> 
+<a id="1">[3]</a> 
 Martin Roberge and Hydrofunctions contributors. (2016-2022). 
 [Hydrofunctions](https://hydrofunctions.readthedocs.io/en/master/introduction.html)
 
+<a id="1">[4]</a> 
+Flaxman, Seth. (2015).
+[Machine Learning in Space and Time](https://www.ml.cmu.edu/research/Flaxman_Thesis_2015.pdf) \[Unpublished Doctoral Thesis\].
+Carnegie Mellon University.
+
 The method of data aggregation used on seasonal temperature data and the inverse distance weighting of CT DEEP open sound data follows the same approach used in the Eelgrass Habitat Suitability Index desinged by Jamie Vaudrey, et al:
 
-<a id="1">[2]</a> 
+<a id="1">[5]</a> 
 Vaudrey, J. et al. (2013). 
 Development and Application of a GIS-based Long Island Sound Eelgrass Habitat Suitability Index Model.
 Department of Marine Sciences. 3.
 
 Another GPR based water temperature algorithm:
 
-<a id="1">[3]</a> 
+<a id="1">[6]</a> 
 Zhang, Y. et al. (2021). 
 A Gaussian process regression-based sea surface temperature interpolation algorithm.
 Vol. 39 No. 4, P. 1211-1221
