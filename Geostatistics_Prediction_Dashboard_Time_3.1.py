@@ -451,7 +451,7 @@ discrete_error=1.44
 cont_error=.25
 stride=5
 lsb=(1e-5, 1e5)
-kernel = 1 * RBF([1]*predictors, length_scale_bounds=lsb)
+kernel = 1 * RBF([1]*predictors, length_scale_bounds=lsb) + 1 * RationalQuadratic(length_scale_bounds=lsb)
 
 #Dicts for storage of models
 kernels = {}
@@ -470,14 +470,14 @@ kernels[year], errors[year], models[year] = model_output(discrete_error, cont_er
 
 year=2020
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=3) 
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
 
 # ## 2021
 
 #Params
 year=2021
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=3) 
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
 
 # ## Kernels
 
@@ -485,6 +485,9 @@ kernels[year], errors[year], models[year] = model_output(discrete_error, cont_er
 kernels 
 
 #Standardized Reg
+kernels
+
+#Time reg with both kernels
 kernels
 
 # # Outputting TIFFs
