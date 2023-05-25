@@ -299,29 +299,40 @@ for year in years:
     print(year)
     print(end_time-start_time)
 
+#Graphing param
+plt.rcParams["figure.figsize"]=(15, 5)
+
 #Getting normalization factors as dictionary (to adjust length scales for comparison)
 norms={}
-for year in years:
-    period=df.loc[df["Year"]==year, station_var+ind_var+dep_var]
-    data=period.values
+for i, check in enumerate(ind_var):
+    fig, ax = plt.subplots(1, 3)
+    for idx, year in enumerate(years):
+        period=df.loc[df["Year"]==year, station_var+ind_var+dep_var]
+        data=period.values
 
-    X_train, y_train = data[:, 1:predictors+1], data[:, -1]
+        X_train, y_train = data[:, 1:predictors+1], data[:, -1]
 
-    #Ensuring proper dtypes
-    X_train=np.array(X_train, dtype=np.float64)
+        #Ensuring proper dtypes
+        X_train=np.array(X_train, dtype=np.float64)
+
+        norms[year]=np.std(X_train, axis=0)
+
+        print(np.std(X_train, axis=0))
+
+        #Checking on input params
+        ax[idx].hist(X_train[:, i], bins=15)
+        name= check + " Distribution"
+        ax[idx].set_title(str(year) + " " + name)
+        ax[idx].set_ylim()
+        
+    for subplot in ax:
+        subplot.set_xlim(ax[1].get_xlim()[0],ax[1].get_xlim()[1])
+        subplot.set_ylim(ax[1].get_ylim()[0], ax[1].get_ylim()[1])
+    plt.savefig("Graphs/" + name + ".png" )
     
-    norms[year]=np.std(X_train, axis=0)
-    
-    print(np.std(X_train, axis=0))
-    
-    #Checking on input params
-    check="Longitude"
-    i=ind_var.index(check)
-    plt.hist(X_train[:, i])
-    plt.title(str(year) + " " + check + " Distribution")
     plt.show()
-    print(max(X_train[:, i]))
-    print(min(X_train[:, i]))
+
+help(plt.axes.set_ylim)
 
 for year in years:
     params = gps[year].kernel_.get_params()

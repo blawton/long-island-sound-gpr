@@ -479,6 +479,27 @@ year=2021
 
 kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
 
+# ## 2019 (August)
+
+year=2019
+
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
+
+
+# ## 2020 (August)
+
+year=2020
+
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
+
+
+# ## 2021 (August)
+
+year=2021
+
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
+
+
 # ## Kernels
 
 #(this time of the preferred modes (where 2019 is similar to 2020))
@@ -487,7 +508,10 @@ kernels
 #Standardized Reg
 kernels
 
-#Time reg with both kernels
+#Time reg with both kernels (July)
+kernels
+
+#Time reg with both kernels (August). Thesse should essentially be the same as above
 kernels
 
 # # Outputting TIFFs
