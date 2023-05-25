@@ -5,6 +5,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
 from sklearn.gaussian_process.kernels import RationalQuadratic
 from sklearn.gaussian_process.kernels import WhiteKernel
+from sklearn.gaussian_process.kernels import Matern
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 from scipy.interpolate import NearestNDInterpolator
@@ -39,6 +40,13 @@ pd.options.display.max_columns=150
 # 5. Added in an option for fixed kernel implementation that averages the hyperparamaters of the desired modes from the 2019 and 2020 models
 # 6. Changed "test_mean" to "mean" in model_output (HUGE bug)
 
+# __v_3__
+
+# 1. "manipulating Coastal Distance" now produces optional embayment only map (stored in path6)
+# 2. Removed fixed kernel implementation
+# 3. Removed test section
+# 4. Rational Quadratic Kernel Used Instead of RBF
+
 #Graphing param
 plt.rcParams["figure.figsize"]=(30, 25)
 
@@ -51,6 +59,12 @@ lon_max=-71.811481513000
 
 lat_min=40.970592192000
 lat_max=41.545060950000
+# -
+
+#Working dir
+if(os.path.basename(os.getcwd())[0:18]!="Data Visualization"):
+    os.chdir("..")
+assert(os.path.basename(os.getcwd())[0:18]=="Data Visualization")
 
 # +
 #Loading paths config.yml
@@ -81,116 +95,30 @@ paths[3] = config["Prediction_Dashboard_path3"]
 #Final embayment distance (output of first paragraph of notebook)
 paths[4]  = config["Prediction_Dashboard_path4"]
 
+#Final embayment distance (output of first paragraph of notebook) BUT within measured embays
+paths[6] = config["Prediction_Dashboard_path6"]
+
+#Ouput Path for tiffs
+paths[7] = config["Prediction_Dashboard_output"]
+
 #CSV
 
 #Training Data
-paths[5] = "Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
+paths[5] = "Data/Space_and_time_agg/agg_daily_morning_coastal_features_5_17_2023.csv"
 
 for path in paths.values():
     assert os.path.exists(path), path
 # -
 
-# # Mainpulating Coastal Distance (Only Do Once)
+# # Mainpulating Coastal Distance
 
-#Getting open sound as formatted in ArcGIS Pro
-open_sound = gdal.Open(paths[1])
-band=open_sound.GetRasterBand(1)
-array_os=band.ReadAsArray()
-
-#Getting all sound from state lines (solely to remove Island from Mystic and other land patches)
-all_sound = gdal.Open(paths[2])
-band=all_sound.GetRasterBand(1)
-array_all=band.ReadAsArray()
-
-#embayment distance including only MEASURED Vaudrey embayments
-embay_dist = gdal.Open(paths[3])
-
-gt=embay_dist.GetGeoTransform()
-gt
-
-proj=embay_dist.GetProjection()
-proj
-
-band=embay_dist.GetRasterBand(1)
-array_embay_dist=band.ReadAsArray()
-
-pixelwidth=gt[1]
-pixelheight=-gt[5]
-pixelheight
-
-xOrigin = gt[0]
-yOrigin = gt[3]
-
-cols = embay_dist.RasterXSize
-rows = embay_dist.RasterYSize
-cols
-
-array_os
-
-array_embay_dist
-
-# +
-# #Displaying crucial regions
-# plt.figure()
-# plt.imshow(np.isnan(array))
-# plt.figure()
-# plt.imshow(array==0)
-# plt.figure()
-# plt.imshow(array<0)
-# -
-
-#Starting visualization
-plt.imshow(array_embay_dist)
-
-#Setting open sound (non vaudrey embayments) to 0
-array=np.where(array_os>=0, 0, array_embay_dist)
-
-#With open sound
-plt.imshow(array)
-
-#Getting rid of mystic (state boundaries need to be double checked with os to avoid making fisher's island embayments)
-array=np.where(array_all!=0, array, np.nan)
-array=np.where(np.isnan(array), array_os, array)
-
-#Setting negatives to nan for visualization
-array=np.where(array<0, np.nan, array)
-
-#Final array
-plt.imshow(array)
-
-#Final Array only for embayments
-plt.imshow(np.where(array_embay_dist>0, array, np.nan))
-plt.axis("off")
-
-# +
-# #Border for potential future interpolation
-# plt.figure()
-# plt.imshow(np.isnan(array) & (array_all>0))
-# -
-
-#Displaying figure with nice color scheme
-fig, ax = plt.subplots()
-heatmap=plt.imshow(np.where(np.isnan(array), array_os, array))
-fig.colorbar(heatmap, location="right", shrink=.75)
-
-#Outputting Final Embayment Distance to avoid repeating above
-driver = gdal.GetDriverByName("GTiff")
-driver.Register()
-outds = driver.Create(paths[4], xsize=cols, ysize=rows, bands=1, eType=gdal.GDT_Int16)
-outds.SetGeoTransform(gt)
-outds.SetProjection(proj)
-outband = outds.GetRasterBand(1)
-outband.WriteArray(array)
-outband.SetNoDataValue(np.nan)
-outband.FlushCache()
-outband=None
-outds=None
+# Already done in spatial model
 
 # # Reading in Data and Building in Model
 
 # ## Reading array
 
-#Using the updated file without points removed
+#Using the entire sound still to test for extrapolation ability
 embay_dist = gdal.Open(paths[4])
 
 gt=embay_dist.GetGeoTransform()
@@ -230,10 +158,8 @@ df.loc[df["Organization"]=="Dominion"]
 
 #Dropping nas
 print(len(df))
-df.dropna(subset=["Station ID", "Longitude", "Latitude", "Temperature (C)", "Organization"], inplace=True)
+df.dropna(subset=["Station ID", "Day", "embay_dist", "Longitude", "Latitude", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
-
-# At this point there should be 731 datapoints left
 
 # +
 # #Optional Restriction of TRAINING params to Eastern Sound
@@ -241,32 +167,29 @@ print(len(df))
 # print(len(df))
 # -
 
-# ^The above restriction destroys the model's ability to find correct hyperparameters, which shows that training on the LIS as a whole is clearly preferable
+# ^The above restriction destroys the model's ability to find meaningful hyperparameters, which shows that training on the LIS as a whole is clearly preferable
 
 pd.unique(df["Organization"])
 
-#Getting list of continuous organizations for alphas (move to YAML)
-cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
+# +
+#Model Params
+station_var=["Station ID"]
 
-#Testing alpha logic
-cont_error=.1
-discrete_error=1.44
-orgs=df.loc[df["Year"]==2019, "Organization"].values
-np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
+ind_var=["Longitude", "Latitude", "embay_dist", "Day"]
 
+dep_var = ["Temperature (C)"]
+
+predictors=len(ind_var)
+
+
+# -
 
 #Building Model (adapted to dashboard from "Geostatistics_Workbook_version_2.1.2.ipynb")
-def build_model(predictors, year, kernel, noise, discrete_error, cont_error):
+def build_model(predictors, year, kernel, noise, alpha):
     
     #Selecting data from proper year
-    period=df.loc[df["Year"]==year, ["Station ID", "Longitude", "Latitude", "embay_dist", "Temperature (C)"]]
+    period=df.loc[df["Year"]==year, station_var+ind_var+dep_var]
     data=period.values
-
-    #Designing an alpha matrix based on which means are from discrete data
-    orgs=df.loc[df["Year"]==year, "Organization"].values
-
-    #applying mask
-    alpha=np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
     
     #Partitioning X and y
     
@@ -281,13 +204,9 @@ def build_model(predictors, year, kernel, noise, discrete_error, cont_error):
     y_mean=np.mean(y_train)
     y_train=y_train-y_mean
 
-    #Normalizing predictors (X) for training sets
-    #X_test[i]=X_test[i] - np.mean(X_test[i], axis=0)
-    #X_test[i]=X_test[i] / np.std(X_test[i], axis=0)
-
     #Normalizing predictors (X) for testing sets
-    #X_train[i]=X_train[i] - np.mean(X_train[i], axis=0)
-    #X_train[i]=X_train[i] / np.std(X_train[i], axis=0)
+    #X_train=X_train - np.mean(X_train, axis=0)
+    #X_train=X_train / np.std(X_train, axis=0)
 
     #Constructing Process
     if noise:
@@ -301,42 +220,10 @@ def build_model(predictors, year, kernel, noise, discrete_error, cont_error):
     return(gaussian_process, y_mean)
 
 
-# # Quick Test of Sensitivity to Error Params
-
-#Params
-discrete_error=.5
-cont_error=1.2
-year=2021
-
-# +
-#Testing build model
-
-kernel = 1 * RBF(length_scale=[1.0, 1.0, 1.0], length_scale_bounds=(1e-5, 1e5))
-
-test_process, test_mean =build_model(3, year, kernel, True, discrete_error, cont_error)
-
-test_process.kernel_
-# -
-
-#Params
-discrete_error=1.44
-cont_error=.1
-year=2021
-
-# +
-#Testing build model
-
-kernel = 1 * RBF(length_scale=[1.0, 1.0, 1.0], length_scale_bounds=(1e-5, 1e5))
-
-test_process, test_mean =build_model(3, year, kernel, True, discrete_error, cont_error)
-
-test_process.kernel_
-# -
-
 # # Setting Up Output Heatmap
 
 #Defining Resolution of Output Heatmap
-stride=2
+stride=5
 
 
 def get_heatmap_inputs(stride, coastal_map, gt):
@@ -372,56 +259,6 @@ def get_heatmap_inputs(stride, coastal_map, gt):
     return(X_pred, resampled, resampled.shape)
 
 
-# ## Running test version of model (SKIP)
-
-# +
-#Testing get_heatmap_inputs
-X_pred, resampled, grid_shape = get_heatmap_inputs(stride, array, gt)
-
-X_pred
-
-# +
-#Testing prediction with test kernel above
-
-#Narrowing to where embay_dist is defined
-X_pred=pd.DataFrame(X_pred)
-y_pred=pd.DataFrame(index=X_pred.index)
-
-#Filtering to prediction region
-X_pred_filt= X_pred.dropna(axis=0)
-
-y_pred_filt, MSE = test_process.predict(X_pred_filt.values, return_std=True)
-y_pred_filt+=test_mean
-# -
-
-#Adding nas to y dataset
-y_pred["Temp (C)"]=np.nan
-y_pred.loc[X_pred_filt.index, "Temp (C)"]=y_pred_filt
-y_pred
-
-#Reshaping Test Grid
-test_grid = y_pred.values.reshape(grid_shape)
-
-#Graphing param
-plt.rcParams["figure.figsize"]=(30, 25)
-
-# +
-#Assembling Graph
-fig, ax = plt.subplots()
-
-heatmap = plt.imshow(test_grid)
-
-plt.title(str(year) + " Embayment Temperature Heatmap", size="x-large")
-plt.xticks(ticks=np.linspace(0, grid_shape[1], 9), labels=np.linspace(lon_min, lon_max, 9))
-plt.xlabel("Longitude", size="x-large")
-
-plt.yticks(ticks=np.linspace(0, grid_shape[0], 5), labels=np.linspace(lat_min, lat_max, 5))
-plt.ylabel("Latitude", size="x-large")
-
-#ax.set(xlim=(lon_min, lon_max), ylim=(lat_min, lat_max))
-fig.colorbar(heatmap, location="right", shrink=.75)
-# -
-
 # # Model Output
 
 # Initial guesses for model length scales are important because they prevent the model from going into an unstable mode where the middle 2nd length scale parameter blows up. Edit: this still happens by chance even with an initial guess of .1
@@ -432,27 +269,24 @@ hmax=26
 sdmin=0
 sdmax=1.2
 
-#Calculating average kernel
-avg_scales = np.array([0.639, 0.0594, 0.0382]) + np.array([0.835, 0.052, 0.0432])
-avg_scales = avg_scales/2
-avg_scales
 
-
-def model_output(discrete_error, cont_error, year, stride, fixed):
+def model_output(day, alpha, year, stride, kernel, predictors):
     
     #Building Process
-    if fixed:
-        kernel = 1 * RBF(length_scale=avg_scales, length_scale_bounds="fixed")
-    elif not fixed:
-        kernel = 1 * RBF(length_scale=avg_scales, length_scale_bounds=(1e-5, 1e5))
+    kernel = kernel
     
-    process, mean =build_model(3, year, kernel, True, discrete_error, cont_error)
+    process, mean =build_model(predictors, year, kernel, True, alpha)
     
     #Building Heatmap
     X_pred, resampled, grid_shape = get_heatmap_inputs(stride, array, gt)
     
     #Narrowing to where embay_dist is defined
     X_pred=pd.DataFrame(X_pred)
+    X_pred["Day"]=day
+    
+    #Xpred columns must match order of indep vars
+    print(X_pred.head)
+    
     y_pred=pd.DataFrame(index=X_pred.index)
 
     #Filtering to prediction region
@@ -491,7 +325,7 @@ def model_output(discrete_error, cont_error, year, stride, fixed):
     cbar = fig.colorbar(heatmap, location="right", shrink=.75)
     cbar.set_label('Deg C', rotation=270, size="large")
 
-    plt.savefig("Data/Heatmaps/" + title.replace(" ", "_") + "_v3.png")
+    #plt.savefig("Data/Heatmaps/" + title.replace(" ", "_") + "_v3.png")
     plt.show()
     
     #Graphing and Saving STD
@@ -509,7 +343,7 @@ def model_output(discrete_error, cont_error, year, stride, fixed):
     cbar=fig.colorbar(heatmap, location="right", shrink=.75)
     cbar.set_label('Standard Deviation in Deg C', rotation=270, size="large")
 
-    plt.savefig("Data/Heatmaps/" + title.replace(" ", "_") + "_v3.png")
+    #plt.savefig("Data/Heatmaps/" + title.replace(" ", "_") + "_v3.png")
     plt.show()
     
     return(process.kernel_, std_grid, y_grid)
@@ -518,60 +352,115 @@ def model_output(discrete_error, cont_error, year, stride, fixed):
 #Graphing param
 plt.rcParams["figure.figsize"]=(30, 25)
 
+# +
+#Params
+years=[2019, 2020, 2021]
+predictors=4
+alpha=.25
+stride=5
+lsb=(1e-5, 1e5)
+
+#Day for prediction
+day=196
+
+#Dicts for storage of models
+kernels = {}
+errors= {}
+models = {}
+x_stds = {}
+# -
+
+#Getting x_stds for initial kernel guess
+for year in years:
+    period=df.loc[df["Year"]==year, station_var+ind_var+dep_var]
+    data=period.values
+
+    #Partitioning X and y
+
+    X_train, y_train = data[:, 1:predictors+1], data[:, -1]
+    print(X_train.shape)
+
+    #Ensuring proper dtypes
+    X_train=np.array(X_train, dtype=np.float64)
+    y_train=np.array(y_train, dtype=np.float64)
+
+    #Demeaning y
+    y_mean=np.mean(y_train)
+    y_train=y_train-y_mean
+
+    #Normalizing predictors (X) for testing sets
+    X_train=X_train - np.mean(X_train, axis=0)
+    x_stds[year]=np.std(X_train, axis=0)
+
+#Testing output
+x_stds[2019]
+
 # ## 2019
 
-#Params
-discrete_error=1.44
-cont_error=.1
 year=2019
-stride=2
 
-model_output(discrete_error, cont_error, year, stride, fixed=False) 
+kernel = 1.52**2 * RBF(length_scale=[0.884, 0.06, 0.0487, 0.00001], length_scale_bounds="fixed") + Matern(length_scale=[1]*4, length_scale_bounds=lsb)
+kernels[year], errors[year], models[year] = model_output(day, alpha, year, stride, kernel, predictors) 
+
+kernels[2019]
 
 # ## 2020
 
-#Params
-discrete_error=1.44
-cont_error=.1
 year=2020
-stride=2
 
-model_output(discrete_error, cont_error, year, stride, fixed=False) 
+kernel = 1 * RBF(x_stds[year], length_scale_bounds=lsb)
+kernels[year], errors[year], models[year] = model_output(day, alpha, year, stride, kernel, predictors) 
 
 # ## 2021
 
-#Params
-discrete_error=1.44
-cont_error=.1
 year=2021
-stride=2
 
-model_output(discrete_error, cont_error, year, stride, fixed=False) 
+kernel = 1 * RBF(x_stds[year], length_scale_bounds=lsb)
+kernels[year], errors[year], models[year] = model_output(day, alpha, year, stride, kernel, predictors) 
 
-# ## 2021 Additional testing
+# # Outputting TIFFs
 
-year_data=df.loc[df["Year"]="Year"]
+new_gt=(gt[0], gt[1]*stride, gt[2], gt[3], gt[4], gt[5]*stride)
+new_gt
 
-kernel_unfixed, std_grid_unfixed, y_grid_unfixed = model_output(discrete_error, cont_error, year, stride, fixed=False) 
+years = [2019, 2020, 2021]
+for year in years:
+    #Downloading geotiff of model
+    driver = gdal.GetDriverByName("GTiff")
+    driver.Register()
+    name = paths[7] + "Temperature_Model_3_" + str(year) + ".tif"
+    outds = driver.Create(name, xsize=models[year].shape[1], ysize=models[year].shape[0], bands=1, eType=gdal.GDT_Int16)
+    outds.SetGeoTransform(new_gt)
+    outds.SetProjection(proj)
+    outband = outds.GetRasterBand(1)
+    outband.WriteArray(models[year])
+    outband.SetNoDataValue(np.nan)
+    outband.FlushCache()
+    outband=None
+    outds=None
+    
+    #Downloading geotiff of error
+    driver = gdal.GetDriverByName("GTiff")
+    driver.Register()
+    name = paths[7] + "Temperature_Model_3_Error_" + str(year) + ".tif"
+    outds = driver.Create(name, xsize=errors[year].shape[1], ysize=errors[year].shape[0], bands=1, eType=gdal.GDT_Int16)
+    outds.SetGeoTransform(new_gt)
+    outds.SetProjection(proj)
+    outband = outds.GetRasterBand(1)
+    outband.WriteArray(errors[year])
+    outband.SetNoDataValue(np.nan)
+    outband.FlushCache()
+    outband=None
+    outds=None
 
-kernel_fixed, std_grid_fixed, y_grid_fixed = model_output(discrete_error, cont_error, year, stride, fixed=True) 
+#Testing saved geotiff
+name = paths[7] + "Temperature_Model_3_2021.tif"
+test=gdal.Open(name)
+band=test.GetRasterBand(1)
+array=band.ReadAsArray()
+plt.imshow(array)
 
-
-# +
-#plotting Difference of fixed and unfixed kernels for 2021
-fig, ax = plt.subplots()
-heatmap = plt.imshow(y_grid_fixed-y_grid_unfixed, vmax=2.5, vmin=-2.5, cmap=mpl.colormaps["seismic"])
-
-title=str(year) + " Model Error"
-plt.title(title, size="x-large")
-plt.xticks(ticks=np.linspace(0, grid_shape[1], 9), labels=np.linspace(lon_min, lon_max, 9))
-plt.xlabel("Longitude", size="x-large")
-
-plt.yticks(ticks=np.linspace(0, grid_shape[0], 5), labels=np.linspace(lat_min, lat_max, 5))
-plt.ylabel("Latitude", size="x-large")
-
-cbar=fig.colorbar(heatmap, location="right", shrink=.75)
-cbar.set_label('Fixed - Unfixed in Deg C', rotation=270, size="large")
-# -
+gt=test.GetGeoTransform()
+gt
 
 

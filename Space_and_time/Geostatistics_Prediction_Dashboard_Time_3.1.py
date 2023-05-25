@@ -62,8 +62,15 @@ lat_max=41.545060950000
 
 #Variables
 station_var=["Station ID"]
-indep_var=["Longitude", "Latitude", "embay_dist"]
+#(order matters here because of how get_heatmap_inputs works)
+indep_var=["Longitude", "Latitude", "embay_dist", "Day"]
 dep_var= ["Temperature (C)"]
+# -
+
+#Working dir
+if(os.path.basename(os.getcwd())[0:18]!="Data Visualization"):
+    os.chdir("..")
+assert(os.path.basename(os.getcwd())[0:18]=="Data Visualization")
 
 # +
 #Loading paths config.yml
@@ -107,7 +114,7 @@ paths[7] = config["Prediction_Dashboard_output"]
 #CSV
 
 #Training Data
-paths[5] = "Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
+paths[5] =  "Data/Space_and_time_agg/agg_daily_morning_coastal_features_5_17_2023.csv"
 
 for path in paths.values():
     assert os.path.exists(path), path
@@ -239,10 +246,6 @@ print(len(df))
 # print(len(df))
 # -
 
-test=array[np.where(array.any()>0)][0]
-test.sort()
-test
-
 # ^The above restriction destroys the model's ability to find meaningful hyperparameters, which shows that training on the LIS as a whole is clearly preferable
 
 pd.unique(df["Organization"])
@@ -284,7 +287,7 @@ def build_model(predictors, year, kernel, discrete_error, cont_error):
     #Normalizing predictors (X) for training sets
     X_train=X_train - np.mean(X_train, axis=0)
     X_train=X_train / np.std(X_train, axis=0)
-
+    
     #Constructing Process
     gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha)
 
@@ -303,7 +306,7 @@ stride=2
 # +
 #Its crucial for the variables in this function to match the order of station_var+indep_var+dep_var 
 #(year var added for time func.)
-def get_heatmap_inputs(stride, coastal_map, gt, year):
+def get_heatmap_inputs(stride, coastal_map, gt, day):
     
     #Reading in geotransform
     pixelwidth=gt[1]
@@ -336,8 +339,8 @@ def get_heatmap_inputs(stride, coastal_map, gt, year):
     #Making latitude and longitude into a grid
     lonv, latv = np.meshgrid(lons, lats)
     
-    #Flattening predictors to run through gaussian_process.predict
-    X_pred = np.column_stack((lonv.flatten(), latv.flatten(), resampled.flatten()))
+    #Flattening predictors to run through gaussian_process.predict (adding year)
+    X_pred = np.column_stack((lonv.flatten(), latv.flatten(), resampled.flatten(), np.repeat(day, len(resampled.flatten()))))
     
     return(X_pred, resampled, resampled.shape)
 
@@ -355,7 +358,7 @@ sdmin=0
 sdmax=1.2
 
 
-def model_output(discrete_error, cont_error, year, stride, kernel, predictors):
+def model_output(discrete_error, cont_error, year, stride, kernel, predictors, day):
     
     #Building Process
     kernel = kernel
@@ -363,7 +366,7 @@ def model_output(discrete_error, cont_error, year, stride, kernel, predictors):
     process, mean =build_model(predictors, year, kernel, discrete_error, cont_error)
     
     #Building Heatmap
-    X_pred, resampled, grid_shape = get_heatmap_inputs(stride, array, gt, year)
+    X_pred, resampled, grid_shape = get_heatmap_inputs(stride, array, gt, day)
     
     #Creating y based on X
     X_pred=pd.DataFrame(X_pred)
@@ -449,12 +452,12 @@ plt.rcParams["figure.figsize"]=(30, 25)
 
 # +
 #Params
-parameters=3
+predictors=4
 discrete_error=1.44
 cont_error=.25
 stride=5
 lsb=(1e-5, 1e5)
-kernel = 1 * RBF([1]*parameters, length_scale_bounds=lsb)
+kernel = 1 * RBF([1]*predictors, length_scale_bounds=lsb) + 1 * RationalQuadratic(length_scale_bounds=lsb)
 
 #Dicts for storage of models
 kernels = {}
@@ -466,21 +469,42 @@ models = {}
 
 year=2019
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=3)
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=196)
 
 
 # ## 2020
 
 year=2020
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=3) 
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
 
 # ## 2021
 
 #Params
 year=2021
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=3) 
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
+
+# ## 2019 (August)
+
+year=2019
+
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
+
+
+# ## 2020 (August)
+
+year=2020
+
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
+
+
+# ## 2021 (August)
+
+year=2021
+
+kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
+
 
 # ## Kernels
 
@@ -488,6 +512,12 @@ kernels[year], errors[year], models[year] = model_output(discrete_error, cont_er
 kernels 
 
 #Standardized Reg
+kernels
+
+#Time reg with both kernels (July)
+kernels
+
+#Time reg with both kernels (August). Thesse should essentially be the same as above
 kernels
 
 # # Outputting TIFFs
