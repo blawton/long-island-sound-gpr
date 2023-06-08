@@ -160,23 +160,8 @@ array_os
 
 array_embay_dist
 
-# +
-# #Displaying crucial regions
-# plt.figure()
-# plt.imshow(np.isnan(array))
-# plt.figure()
-# plt.imshow(array==0)
-# plt.figure()
-# plt.imshow(array<0)
-# -
-
 #Starting visualization
 plt.imshow(array_embay_dist)
-
-# +
-# #Setting open sound (non vaudrey embayments) to 0
-# array=np.where(array_os>=0, 0, array_embay_dist)
-# -
 
 #Getting rid of mystic (state boundaries need to be double checked with os to avoid making fisher's island embayments)
 array=np.where(array_all!=0, array_embay_dist, np.nan)
@@ -207,7 +192,7 @@ plt.axis("off")
 
 # # Reading in Data and Building in Model
 
-# ## Reading array
+# ## Reading coastal features array
 
 #Using the entire sound (not just eastern sound)
 array=embay_only
@@ -401,10 +386,14 @@ plt.rcParams["figure.figsize"]=(30, 25)
 #Params
 predictors=4
 alpha=.25
-stride=5
+stride=20
 lsb=(1e-5, 1e5)
 kernel = 1 * RBF([1]*predictors, length_scale_bounds=lsb) + 1 * RationalQuadratic(length_scale_bounds=lsb)
 years = [2019, 2020, 2021]
+thresholds = [24, 24.5, 25]
+temp_limits = (19, 27)
+day_limits = (0, 50)
+days=range(172, 244)
 
 #Days for showing model differentiation
 display_days={"July": 196, "August": 227}
@@ -421,125 +410,7 @@ for year in years:
     #Getting models and ymeans outputted
     models[year], ymeans[year] = build_model(predictors, year, kernel, alpha)
 
-# ## Heatmaps
-
-# +
-#Graphing selected days above
-
-plt.rcParams["figure.figsize"]=(40, 60)
-
-#Making Figures
-hfig, hax =plt.subplots(len(years), len(display_days), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
-efig, eax =plt.subplots(len(years), len(display_days), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
-
-#Plotting
-for i, year in enumerate(years):
-    for j, day in enumerate(display_days.values()):     
-                error, hmap = model_output(year, stride, models[year], ymeans[year], day)
-
-                #hmap plot
-                him = hax[i, j].imshow(hmap, vmin=20, vmax=26)
-                hax[i, j].set_title("Temperature: " + list(display_days.keys())[j] + " " + str(year), fontsize=24)
-                
-                #error plot
-                eim = eax[i, j].imshow(error, vmin=0, vmax=1.2)
-                eax[i, j].set_title("Standard Error: " + list(display_days.keys())[j] + " " + str(year), fontsize=24)
-                
-#Axes off
-[ax.set_axis_off() for ax in hax.ravel()]
-[ax.set_axis_off() for ax in eax.ravel()]
-
-#hmap cbar
-cax = hfig.add_axes([0.1,0.05,0.8,0.03])
-cbar = hfig.colorbar(him, cax=cax, orientation='horizontal')
-cbar.set_label('Deg C')
-
-#error cbar
-cax = efig.add_axes([0.1,0.05,0.8,0.03])
-cbar = efig.colorbar(eim, cax=cax, orientation='horizontal')
-cbar.set_label('Standard Deviation in Deg C')
-
-hfig.savefig("Graphs/Time_Dependent_Heatmaps.png")
-efig.savefig("Graphs/Time_Dependent_Errors.png")
-
-plt.show()
-# -
-
-
-#Re-setting threshold params
-thresholds = [24, 24.5, 25]
-stride =20
-days=range(172, 244)
-
-# +
-#Summer Averages
-
-plt.rcParams["figure.figsize"]=(30, 20)
-
-#Tallying
-for i, year in enumerate(years):
-    total = np.zeros(1)
-    fig, ax = plt.subplots()
-    for day in days:
-        error, hmap = model_output(year, stride, models[year], ymeans[year], day)
-        if len(total)>1:
-            total += hmap
-        else:
-            total = hmap
-    total = total/len(range(172, 244))
-    avg = plt.imshow(total)
-    plt.title("Summer Average Temperature, " + str(year), fontsize=24)
-    cbar = fig.colorbar(avg, location="right", shrink=.75)
-    cbar.set_label('Deg C', rotation=270, fontsize=24)
-    cbar.ax.tick_params(labelsize=24)
-    plt.axis("off")
-    plt.savefig("Graphs/Time_Dependent_Summer_Average_" + str(year) + ".png")
-    plt.show()
-    
-
-
-# +
-#Days over Chosen Threshold(s)
-plt.rcParams["figure.figsize"]=(60, 60)
-
-#Making Figures
-hfig, hax =plt.subplots(len(years), len(thresholds), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
-
-#Plotting
-for i, year in enumerate(years):
-    for j, thresh in enumerate(thresholds):
-        total = np.zeros(1)
-        for day in  days:
-            error, hmap = model_output(year, stride, models[year], ymeans[year], day)
-
-            #Establishing threshold as the cut
-            over = np.where(hmap>thresh, 1, 0)
-
-            #Readding nans for better visualization
-            over=np.where(np.isnan(hmap), np.nan, over)
-
-            if len(total)>1:
-                total += over
-            else:
-                total = over
-        him = hax[i, j].imshow(total, vmin=0, vmax=10)
-        hax[i, j].set_title("Days over Threshold of " + str(thresh) + " degrees (C), " + str(year), fontsize=24)
-cax = hfig.add_axes([0.1,0.05,0.8,0.03])
-cbar = hfig.colorbar(him, cax=cax, orientation='horizontal')
-cbar.set_label('Count of Days', fontsize=24)
-cbar.ax.tick_params(labelsize=24)
-[ax.set_axis_off() for ax in hax.ravel()]
-plt.savefig("Graphs/Days_over_Thresholds.png")
-plt.show()
-# -
-
-
 # ## Plots of distributions
-
-temp_limits = (19, 27)
-day_limits = (0, 50)
-stride =20
-days=range(172, 244)
 
 # +
 #Summer Averages
@@ -626,61 +497,6 @@ plt.savefig("Graphs/Days_over_Thresholds_Distributions_Data.png")
 plt.show()
 
 # -
-
-# ## 2019
-
-year=2019
-
-kernels[year], errors[year], hmaps[year] = model_output(year, stride, kernel=kernel, predictors=4, alpha=.25, day=196)
-
-
-# ## 2020
-
-year=2020
-
-kernels[year], errors[year], hmaps[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
-
-# ## 2021
-
-#Params
-year=2021
-
-kernels[year], errors[year], hmaps[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
-
-# ## 2019 (August)
-
-year=2019
-
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
-
-
-# ## 2020 (August)
-
-year=2020
-
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
-
-
-# ## 2021 (August)
-
-year=2021
-
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
-
-
-# ## Kernels
-
-#(this time of the preferred modes (where 2019 is similar to 2020))
-kernels 
-
-#Standardized Reg
-kernels
-
-#Time reg with both kernels (July)
-kernels
-
-#Time reg with both kernels (August). Thesse should essentially be the same as above
-kernels
 
 # # Outputting TIFFs
 
