@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import statsmodels.api as sm
 from scipy.interpolate import NearestNDInterpolator
 import matplotlib as mpl
+import os
 
 from osgeo import gdal, gdalconst
 import numpy as np
@@ -172,11 +173,13 @@ array_embay_dist
 #Starting visualization
 plt.imshow(array_embay_dist)
 
-#Setting open sound (non vaudrey embayments) to 0
-array=np.where(array_os>=0, 0, array_embay_dist)
+# +
+# #Setting open sound (non vaudrey embayments) to 0
+# array=np.where(array_os>=0, 0, array_embay_dist)
+# -
 
 #Getting rid of mystic (state boundaries need to be double checked with os to avoid making fisher's island embayments)
-array=np.where(array_all!=0, array, np.nan)
+array=np.where(array_all!=0, array_embay_dist, np.nan)
 array=np.where(np.isnan(array), array_os, array)
 
 #Setting negatives to nan for visualization
@@ -253,24 +256,13 @@ pd.unique(df["Organization"])
 #Getting list of continuous organizations for alphas (move to YAML)
 cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 
-#Testing alpha logic
-cont_error=.25
-discrete_error=1.44
-orgs=df.loc[df["Year"]==2019, "Organization"].values
-np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
-
 
 #Building Model (adapted to dashboard from "Geostatistics_Workbook_version_2.1.2.ipynb")
-def build_model(predictors, year, kernel, discrete_error, cont_error):
+def build_model(predictors, year, kernel, alpha):
     
     #Selecting data from proper year
     period=df.loc[df["Year"]==year, station_var+indep_var+dep_var]
     data=period.values
-
-    #Designing an alpha matrix based on which means are from discrete data
-    orgs=df.loc[df["Year"]==year, "Organization"].values
-    #applying mask
-    alpha=np.where(np.isin(orgs, cont_orgs), cont_error, discrete_error)
 
     #Partitioning X and y
     
@@ -297,11 +289,8 @@ def build_model(predictors, year, kernel, discrete_error, cont_error):
 
     return(gaussian_process, y_mean)
 
+
 # # Setting Up Output Heatmap
-
-#Defining Resolution of Output Heatmap
-stride=2
-
 
 # +
 #Its crucial for the variables in this function to match the order of station_var+indep_var+dep_var 
@@ -358,12 +347,7 @@ sdmin=0
 sdmax=1.2
 
 
-def model_output(discrete_error, cont_error, year, stride, kernel, predictors, day):
-    
-    #Building Process
-    kernel = kernel
-    
-    process, mean =build_model(predictors, year, kernel, discrete_error, cont_error)
+def model_output(year, stride, process, ymean, day):
     
     #Building Heatmap
     X_pred, resampled, grid_shape = get_heatmap_inputs(stride, array, gt, day)
@@ -389,7 +373,7 @@ def model_output(discrete_error, cont_error, year, stride, kernel, predictors, d
             
     #Running process
     y_pred_filt, MSE = process.predict(X_pred_filt.values, return_std=True)
-    y_pred_filt+=mean
+    y_pred_filt+=ymean
     
     #Adding nas to y dataset
     y_pred["Temp (C)"]=np.nan
@@ -405,47 +389,10 @@ def model_output(discrete_error, cont_error, year, stride, kernel, predictors, d
     #y_grid = np.where(resampled!=0, y_grid, np.nan)
     std_grid= std.values.reshape(grid_shape)
     
-    #Graphing and Saving Heatmap
-    fig, ax = plt.subplots()
-    heatmap = plt.imshow(y_grid, vmin=hmin, vmax=hmax)
-    
-    title=str(year) + " Embayment Temperature Heatmap"
-    plt.title(title, size="x-large")
-    plt.xticks(ticks=np.linspace(0, grid_shape[1], 9), labels=np.linspace(lon_min, lon_max, 9))
-    plt.xlabel("Longitude", size="x-large")
+    return(std_grid, y_grid)
 
-    plt.yticks(ticks=np.linspace(0, grid_shape[0], 5), labels=np.linspace(lat_min, lat_max, 5))
-    plt.ylabel("Latitude", size="x-large")
 
-    cbar = fig.colorbar(heatmap, location="right", shrink=.75)
-    cbar.set_label('Deg C', rotation=270, size="large")
-    
-    #Showing datapoints alongside heatmap for debugging
-    #plt.scatter(df.loc[df["Year"]==year, "xPixel"]//stride, df.loc[df["Year"]==year, "yPixel"]//stride, s=1, c="Red")
-    
-    #plt.savefig("Data/Heatmaps/" + title.replace(" ", "_") + "_v3.png")
-    plt.show()
-    
-    #Graphing and Saving STD
-    fig, ax = plt.subplots()
-    heatmap = plt.imshow(std_grid, vmin=sdmin, vmax=sdmax)
-    
-    title=str(year) + " Model Error"
-    plt.title(title, size="x-large")
-    plt.xticks(ticks=np.linspace(0, grid_shape[1], 9), labels=np.linspace(lon_min, lon_max, 9))
-    plt.xlabel("Longitude", size="x-large")
-
-    plt.yticks(ticks=np.linspace(0, grid_shape[0], 5), labels=np.linspace(lat_min, lat_max, 5))
-    plt.ylabel("Latitude", size="x-large")
-
-    cbar=fig.colorbar(heatmap, location="right", shrink=.75)
-    cbar.set_label('Standard Deviation in Deg C', rotation=270, size="large")
-
-    #plt.savefig("Data/Heatmaps/" + title.replace(" ", "_") + "_v3.png")
-    plt.show()
-    
-    return(process.kernel_, std_grid, y_grid)
-
+# ## Parameters and Training Process
 
 #Graphing param
 plt.rcParams["figure.figsize"]=(30, 25)
@@ -453,37 +400,252 @@ plt.rcParams["figure.figsize"]=(30, 25)
 # +
 #Params
 predictors=4
-discrete_error=1.44
-cont_error=.25
+alpha=.25
 stride=5
 lsb=(1e-5, 1e5)
 kernel = 1 * RBF([1]*predictors, length_scale_bounds=lsb) + 1 * RationalQuadratic(length_scale_bounds=lsb)
+years = [2019, 2020, 2021]
+
+#Days for showing model differentiation
+display_days={"July": 196, "August": 227}
 
 #Dicts for storage of models
 kernels = {}
 errors= {}
 models = {}
+hmaps= {}
+ymeans = {}
+# -
+
+for year in years:
+    #Getting models and ymeans outputted
+    models[year], ymeans[year] = build_model(predictors, year, kernel, alpha)
+
+# ## Heatmaps
+
+# +
+#Graphing selected days above
+
+plt.rcParams["figure.figsize"]=(40, 60)
+
+#Making Figures
+hfig, hax =plt.subplots(len(years), len(display_days), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
+efig, eax =plt.subplots(len(years), len(display_days), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
+
+#Plotting
+for i, year in enumerate(years):
+    for j, day in enumerate(display_days.values()):     
+                error, hmap = model_output(year, stride, models[year], ymeans[year], day)
+
+                #hmap plot
+                him = hax[i, j].imshow(hmap, vmin=20, vmax=26)
+                hax[i, j].set_title("Temperature: " + list(display_days.keys())[j] + " " + str(year), fontsize=24)
+                
+                #error plot
+                eim = eax[i, j].imshow(error, vmin=0, vmax=1.2)
+                eax[i, j].set_title("Standard Error: " + list(display_days.keys())[j] + " " + str(year), fontsize=24)
+                
+#Axes off
+[ax.set_axis_off() for ax in hax.ravel()]
+[ax.set_axis_off() for ax in eax.ravel()]
+
+#hmap cbar
+cax = hfig.add_axes([0.1,0.05,0.8,0.03])
+cbar = hfig.colorbar(him, cax=cax, orientation='horizontal')
+cbar.set_label('Deg C')
+
+#error cbar
+cax = efig.add_axes([0.1,0.05,0.8,0.03])
+cbar = efig.colorbar(eim, cax=cax, orientation='horizontal')
+cbar.set_label('Standard Deviation in Deg C')
+
+hfig.savefig("Graphs/Time_Dependent_Heatmaps.png")
+efig.savefig("Graphs/Time_Dependent_Errors.png")
+
+plt.show()
+# -
+
+
+#Re-setting threshold params
+thresholds = [24, 24.5, 25]
+stride =20
+days=range(172, 244)
+
+# +
+#Summer Averages
+
+plt.rcParams["figure.figsize"]=(30, 20)
+
+#Tallying
+for i, year in enumerate(years):
+    total = np.zeros(1)
+    fig, ax = plt.subplots()
+    for day in days:
+        error, hmap = model_output(year, stride, models[year], ymeans[year], day)
+        if len(total)>1:
+            total += hmap
+        else:
+            total = hmap
+    total = total/len(range(172, 244))
+    avg = plt.imshow(total)
+    plt.title("Summer Average Temperature, " + str(year), fontsize=24)
+    cbar = fig.colorbar(avg, location="right", shrink=.75)
+    cbar.set_label('Deg C', rotation=270, fontsize=24)
+    cbar.ax.tick_params(labelsize=24)
+    plt.axis("off")
+    plt.savefig("Graphs/Time_Dependent_Summer_Average_" + str(year) + ".png")
+    plt.show()
+    
+
+
+# +
+#Days over Chosen Threshold(s)
+plt.rcParams["figure.figsize"]=(60, 60)
+
+#Making Figures
+hfig, hax =plt.subplots(len(years), len(thresholds), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
+
+#Plotting
+for i, year in enumerate(years):
+    for j, thresh in enumerate(thresholds):
+        total = np.zeros(1)
+        for day in  days:
+            error, hmap = model_output(year, stride, models[year], ymeans[year], day)
+
+            #Establishing threshold as the cut
+            over = np.where(hmap>thresh, 1, 0)
+
+            #Readding nans for better visualization
+            over=np.where(np.isnan(hmap), np.nan, over)
+
+            if len(total)>1:
+                total += over
+            else:
+                total = over
+        him = hax[i, j].imshow(total, vmin=0, vmax=10)
+        hax[i, j].set_title("Days over Threshold of " + str(thresh) + " degrees (C), " + str(year), fontsize=24)
+cax = hfig.add_axes([0.1,0.05,0.8,0.03])
+cbar = hfig.colorbar(him, cax=cax, orientation='horizontal')
+cbar.set_label('Count of Days', fontsize=24)
+cbar.ax.tick_params(labelsize=24)
+[ax.set_axis_off() for ax in hax.ravel()]
+plt.savefig("Graphs/Days_over_Thresholds.png")
+plt.show()
+# -
+
+
+# ## Plots of distributions
+
+temp_limits = (19, 27)
+day_limits = (0, 50)
+stride =20
+days=range(172, 244)
+
+# +
+#Summer Averages
+
+plt.rcParams["figure.figsize"]=(15, 10)
+
+for i, year in enumerate(years):
+    total = np.zeros(1)
+    #Plotting from Model
+    fig, ax = plt.subplots()
+    for day in days:
+        error, hmap = model_output(year, stride, models[year], ymeans[year], day)
+        if len(total)>1:
+            total += hmap
+        else:
+            total = hmap
+    total = total/len(range(172, 244))
+    plt.hist(total.flatten(), bins=20)
+    plt.xlim(temp_limits)
+    plt.title("Summer Average Model Temperature Distribution, " + str(year), fontsize=24)
+
+    plt.savefig("Graphs/Time_Dependent_Summer_Average_Distribution_Model" + str(year) + ".png")
+    plt.show()
+    
+    #Plotting from underlying data
+    fig, ax = plt.subplots()
+    
+    #Averaging year's data by station WITHIN EASTERN SOUND
+    working = df.loc[(df["Year"]==year) & (lat_min<=df["Latitude"]) & (df["Latitude"]<=lat_max) & (lon_min<=df["Longitude"]) & (df["Longitude"]<=lon_max)].copy()
+    working = working.groupby("Station ID")["Temperature (C)"].mean()
+    print(working.head())
+    plt.hist(working, bins=20)
+    plt.xlim(temp_limits)
+    plt.title("Summer Average Data Temperature Distribution, " + str(year), fontsize=24)
+
+    plt.savefig("Graphs/Time_Dependent_Summer_Average_Distribution_Data" + str(year) + ".png")
+    plt.show()
+
+# +
+#Days over Chosen Threshold(s)
+plt.rcParams["figure.figsize"]=(30, 30)
+
+#Plotting from Model
+hfig, hax =plt.subplots(len(years), len(thresholds), squeeze=True)
+
+for i, year in enumerate(years):
+    for j, thresh in enumerate(thresholds):
+        total = np.zeros(1)
+        for day in  days:
+            error, hmap = model_output(year, stride, models[year], ymeans[year], day)
+
+            #Establishing threshold as the cut
+            over = np.where(hmap>thresh, 1, 0)
+
+            #Readding nans for better visualization
+            over=np.where(np.isnan(hmap), np.nan, over)
+
+            if len(total)>1:
+                total += over
+            else:
+                total = over
+        hax[i, j].hist(total.flatten(), bins=20)
+        hax[i, j].set_title("Days over Threshold of " + str(thresh) + " degrees (C) Model, " + str(year), fontsize=18)
+        hax[i, j].set_xlim(day_limits)
+plt.savefig("Graphs/Days_over_Thresholds_Distributions_Model.png")
+plt.show()
+
+#Plotting from Underlying Data
+hfig, hax =plt.subplots(len(years), len(thresholds), squeeze=True)
+
+total = np.zeros(1)
+for i, year in enumerate(years):
+    for j, thresh in enumerate(thresholds):
+        #Getting year's data by station
+        working = df.loc[(df["Year"]==year) & (lat_min<=df["Latitude"]) & (df["Latitude"]<=lat_max) & (lon_min<=df["Longitude"]) & (df["Longitude"]<=lon_max)].copy()
+        working["Threshold"]= working["Temperature (C)"]>thresh
+        working["Threshold"]=working["Threshold"].astype(int)
+        working = working.groupby("Station ID")["Threshold"].sum()
+        print(working.head())
+        hax[i, j].hist(working, bins=20)
+        hax[i, j].set_title("Days over Threshold of " + str(thresh) + " degrees (C) Data, " + str(year), fontsize=18)
+        hax[i, j].set_xlim(day_limits)
+plt.savefig("Graphs/Days_over_Thresholds_Distributions_Data.png")
+plt.show()
+
 # -
 
 # ## 2019
 
 year=2019
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=196)
+kernels[year], errors[year], hmaps[year] = model_output(year, stride, kernel=kernel, predictors=4, alpha=.25, day=196)
 
 
 # ## 2020
 
 year=2020
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
+kernels[year], errors[year], hmaps[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
 
 # ## 2021
 
 #Params
 year=2021
 
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
+kernels[year], errors[year], hmaps[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
 
 # ## 2019 (August)
 
