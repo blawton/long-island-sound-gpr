@@ -228,13 +228,9 @@ print(len(df))
 df.dropna(subset=["Station ID", "Longitude", "Latitude", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
 
-# +
-# #Optional Restriction of TRAINING params to Eastern Sound
-# df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
-# print(len(df))
-# -
-
-# ^The above restriction destroys the model's ability to find meaningful hyperparameters, which shows that training on the LIS as a whole is clearly preferable
+#Optional Restriction of TRAINING and later testing params to Eastern Sound
+df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
+print(len(df))
 
 pd.unique(df["Organization"])
 
@@ -274,110 +270,7 @@ def build_model(predictors, year, kernel, alpha):
 
     return(gaussian_process, y_mean)
 
-
-# # Setting Up Output Heatmap
-
-# +
-#Its crucial for the variables in this function to match the order of station_var+indep_var+dep_var 
-#(year var added for time func.)
-def get_heatmap_inputs(stride, coastal_map, gt, day):
-    
-    #Reading in geotransform
-    pixelwidth=gt[1]
-    pixelheight=-gt[5]
-    
-    xOrigin = gt[0]
-    yOrigin = gt[3]
-    
-    #New array of coastal features
-    resampled=coastal_map[0::stride, 0::stride]
-    
-    #Calculating longitudes of Resampled Array
-    
-    lons=np.arange(resampled.shape[1])*(pixelwidth)*(stride) + xOrigin
-    #Centering
-    lons +=pixelwidth/2
-    
-#     print("Lons")
-#     print(min(lons))
-#     print(max(lons))
-    #Calculating lattitudes of Resampled Array
-    
-    lats= -np.arange(resampled.shape[0])*(pixelheight)*(stride) + yOrigin
-    #Centering
-    lats +=pixelheight/2
-#     print("Lats")
-#     print(min(lats))
-#     print(max(lats))
-    
-    #Making latitude and longitude into a grid
-    lonv, latv = np.meshgrid(lons, lats)
-    
-    #Flattening predictors to run through gaussian_process.predict (adding year)
-    X_pred = np.column_stack((lonv.flatten(), latv.flatten(), resampled.flatten(), np.repeat(day, len(resampled.flatten()))))
-    
-    return(X_pred, resampled, resampled.shape)
-
-
-# -
-
-# # Model Output
-
-# Initial guesses for model length scales are important because they prevent the model from going into an unstable mode where the middle 2nd length scale parameter blows up. Edit: this still happens by chance even with an initial guess of .1
-
-#Coloring scales
-hmin=20
-hmax=26
-sdmin=0
-sdmax=1.2
-
-
-def model_output(year, stride, process, ymean, day):
-    
-    #Building Heatmap
-    X_pred, resampled, grid_shape = get_heatmap_inputs(stride, array, gt, day)
-    
-    #Creating y based on X
-    X_pred=pd.DataFrame(X_pred)
-    y_pred=pd.DataFrame(index=X_pred.index)
-    
-    #Filtering to prediction region where embay dist is non-nan
-    X_pred_filt= X_pred.dropna(axis=0)
-    
-    #Standardizing X (make sure this matches build_model above)
-    period=df.loc[df["Year"]==year, station_var+indep_var+dep_var]
-    data=period.values
-    X_train = data[:, 1:predictors+1]
-    
-    #Ensuring proper dtypes
-    X_train=np.array(X_train, dtype=np.float64)    
-    
-    #Using training data to normalize predictors to match trained model
-    X_pred_filt = X_pred_filt - np.mean(X_train, axis=0)
-    X_pred_filt = X_pred_filt / np.std(X_train, axis=0)
-            
-    #Running process
-    y_pred_filt, MSE = process.predict(X_pred_filt.values, return_std=True)
-    y_pred_filt+=ymean
-    
-    #Adding nas to y dataset
-    y_pred["Temp (C)"]=np.nan
-    y_pred.loc[X_pred_filt.index, "Temp (C)"]=y_pred_filt
-    
-    #Creating standard error dataset
-    std=pd.DataFrame(index=X_pred.index)
-    std["Standard Deviation"]=np.nan
-    std.loc[X_pred_filt.index, "Standard Deviation"]=MSE
-    
-    #Converting Output to Grid
-    y_grid = y_pred.values.reshape(grid_shape)
-    #y_grid = np.where(resampled!=0, y_grid, np.nan)
-    std_grid= std.values.reshape(grid_shape)
-    
-    return(std_grid, y_grid)
-
-
-# ## Parameters and Training Process
+# # Parameters and Training Process
 
 #Graphing param
 plt.rcParams["figure.figsize"]=(30, 25)
@@ -394,6 +287,8 @@ thresholds = [24, 24.5, 25]
 temp_limits = (19, 27)
 day_limits = (0, 50)
 days=range(172, 244)
+#continuous monitoring "orgs"
+cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 
 #Days for showing model differentiation
 display_days={"July": 196, "August": 227}
@@ -410,47 +305,170 @@ for year in years:
     #Getting models and ymeans outputted
     models[year], ymeans[year] = build_model(predictors, year, kernel, alpha)
 
-# ## Plots of distributions
+# # Plots of distributions
+
+cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 
 # +
-#Summer Averages
+#Summer Averages histogram
 
 plt.rcParams["figure.figsize"]=(15, 10)
 
 for i, year in enumerate(years):
-    total = np.zeros(1)
-    #Plotting from Model
-    fig, ax = plt.subplots()
-    for day in days:
-        error, hmap = model_output(year, stride, models[year], ymeans[year], day)
-        if len(total)>1:
-            total += hmap
-        else:
-            total = hmap
-    total = total/len(range(172, 244))
-    plt.hist(total.flatten(), bins=20)
-    plt.xlim(temp_limits)
-    plt.title("Summer Average Model Temperature Distribution, " + str(year), fontsize=24)
+    
+    #Retrieving data WITHIN AREA DEFINED ABOVE and creating reindexed dataframe with every day present to feed into model
+    working = df.loc[(df["Year"]==year)].copy()
+    
+    #Optional restriction to see if the continuous stations have a distribution that aligns better (make sure it matches below)
+    #working=working.loc[working["Organization"].isin(cont_orgs)]
 
-    plt.savefig("Graphs/Time_Dependent_Summer_Average_Distribution_Model" + str(year) + ".png")
+    by_station=working.drop_duplicates(subset=["Station ID"]).copy()
+    by_station.drop("Day", axis=1, inplace=True)
+    stations=pd.DataFrame(working.drop_duplicates(subset=["Station ID"])["Station ID"])
+    #print(stations)
+    day_list=pd.DataFrame(days, columns=["Day"])
+    #print(day_list)
+    cross = stations.merge(day_list, how = "cross")
+    #print(cross)
+    cross = cross.merge(by_station, how="left", on="Station ID")
+    reindexed=cross[indep_var].copy()
+    print(reindexed.head)
+    
+    #Normalizing predictors
+    X_pred = reindexed.values
+    X_pred=X_pred - np.mean(X_pred, axis=0)
+    X_pred=X_pred / np.std(X_pred, axis=0)
+    
+    #Using reindexed in prediction
+    y_pred, MSE = models[year].predict(X_pred, return_std=True)
+    y_pred+=ymeans[year]
+    print(ymeans[year])
+    
+    #Adding modeled data back into predictors
+    reindexed["Temperature (C)"]=y_pred
+    #print(reindexed)
+    
+    #Adding back in station ID
+    reindexed["Station ID"]=cross["Station ID"]
+    #print(reindexed)
+    
+    #This can be commented out to see histogram of all datapoints (Make Sure it Matches Below)
+    reindexed=reindexed.groupby("Station ID").mean()
+    #print(reindexed)
+    
+    #Plotting from model
+    weights=np.ones_like(reindexed["Temperature (C)"])/len(reindexed)
+    plt.hist(reindexed["Temperature (C)"], weights=weights, edgecolor="black", bins=20)
+    plt.xlim(temp_limits)
+    plt.title("ES Summer Average Model Temperature Distribution, " + str(year), fontsize=24)
+
+    plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distribution_Model_" + str(year) + ".png")
     plt.show()
     
     #Plotting from underlying data
+    
     fig, ax = plt.subplots()
     
-    #Averaging year's data by station WITHIN EASTERN SOUND
-    working = df.loc[(df["Year"]==year) & (lat_min<=df["Latitude"]) & (df["Latitude"]<=lat_max) & (lon_min<=df["Longitude"]) & (df["Longitude"]<=lon_max)].copy()
-    working = working.groupby("Station ID")["Temperature (C)"].mean()
-    print(working.head())
-    plt.hist(working, bins=20)
-    plt.xlim(temp_limits)
-    plt.title("Summer Average Data Temperature Distribution, " + str(year), fontsize=24)
+    #Averaging year's data by station WITHIN AREA DEFINED ABOVE
+    working = df.loc[(df["Year"]==year)].copy()
+    
+    #Optional restriction to see if the continuous stations have a distribution that aligns better (Make Sure it Matches Above)
+    #working.loc[working["Organization"].isin(cont_orgs)]
+    
+    #This can be commented out to see histogram of all datapoints (Make Sure it Matches Above)
+    working = working.groupby("Station ID").mean()
 
-    plt.savefig("Graphs/Time_Dependent_Summer_Average_Distribution_Data" + str(year) + ".png")
+    print(working.head())
+    weights=np.ones_like(working["Temperature (C)"])/len(working)
+    plt.hist(working["Temperature (C)"], weights=weights, edgecolor="black", bins=20)
+    plt.xlim(temp_limits)
+    plt.title("ES Summer Average Data Temperature Distribution, " + str(year), fontsize=24)
+
+    plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distribution_Data_" + str(year) + ".png")
     plt.show()
 
 # +
-#Days over Chosen Threshold(s)
+#Summer Averages box and whisker
+
+plt.rcParams["figure.figsize"]=(15, 10)
+
+for i, year in enumerate(years):
+    lines=[]
+    fig, ax = plt.subplots()
+    
+    #Plotting from model
+    
+    #Getting year's data by station in range defined earlier in notebook
+    working = df.loc[(df["Year"]==year)].copy()
+    
+    #Optional restriction to see if the continuous stations have a distribution that aligns better (make sure it matches below)
+    #working=working.loc[working["Organization"].isin(cont_orgs)]
+
+    by_station=working.drop_duplicates(subset=["Station ID"]).copy()
+    by_station.drop("Day", axis=1, inplace=True)
+    stations=pd.DataFrame(working.drop_duplicates(subset=["Station ID"])["Station ID"])
+    #print(stations)
+    day_list=pd.DataFrame(days, columns=["Day"])
+    #print(day_list)
+    cross = stations.merge(day_list, how = "cross")
+    #print(cross)
+    cross = cross.merge(by_station, how="left", on="Station ID")
+    reindexed=cross[indep_var].copy()
+    #print(reindexed.head)
+    
+    #Normalizing predictors
+    X_pred = reindexed.values
+    X_pred=X_pred - np.mean(X_pred, axis=0)
+    X_pred=X_pred / np.std(X_pred, axis=0)
+    
+    #Using reindexed in prediction
+    y_pred, MSE = models[year].predict(X_pred, return_std=True)
+    y_pred+=ymeans[year]
+    #print(ymeans[year])
+    
+    #Adding modeled data back into predictors
+    reindexed["Temperature (C)"]=y_pred
+    #print(reindexed)
+    
+    #Adding back in station ID
+    reindexed["Station ID"]=cross["Station ID"]
+    #print(reindexed)
+    
+    #This can be commented out to see histogram of all datapoints (Make Sure it Matches Below)
+    reindexed=reindexed.groupby("Station ID").mean()
+    #print(reindexed)
+    
+    #Adding to list to plot
+    lines.append(reindexed["Temperature (C)"])
+    
+    #Plotting from underlying data
+        
+    #Getting year's data in range defined earlier in notebook
+    working = df.loc[(df["Year"]==year)].copy()
+    
+    #Optional restriction to see if the continuous stations have a distribution that aligns better (Make Sure it Matches Above)
+    #working.loc[working["Organization"].isin(cont_orgs)]
+    
+    #This can be commented out to see histogram of all datapoints (Make Sure it Matches Above)
+    working = working.groupby("Station ID").mean()
+
+    #print(working.head())
+    
+    #Adding data to list to plot
+    lines.append(working["Temperature (C)"])
+    
+    #Plotting
+    plt.boxplot(lines, vert=0)
+    plt.xlim(temp_limits)
+    plt.title("ES Summer Average Model vs. Data Temperature Distribution, " + str(year), fontsize=24)
+    ax.set_yticklabels(["Model at Sample Locations", "Data at Sample Locations"])
+    ax.set_ylabel("Group")
+    ax.set_xlabel("Degrees (C)")
+    plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_BandW_" + str(year) + ".png")
+    plt.show()
+
+# +
+#Days over Chosen Threshold(s) box and whisker
 plt.rcParams["figure.figsize"]=(30, 30)
 
 #Plotting from Model
@@ -458,42 +476,65 @@ hfig, hax =plt.subplots(len(years), len(thresholds), squeeze=True)
 
 for i, year in enumerate(years):
     for j, thresh in enumerate(thresholds):
-        total = np.zeros(1)
-        for day in  days:
-            error, hmap = model_output(year, stride, models[year], ymeans[year], day)
+    
+    #Plotting from Model
+    
+        #Retrieving data WITHIN AREA DEFINED ABOVE and creating reindexed dataframe with every day present to feed into model
+        working = df.loc[(df["Year"]==year)].copy()
 
-            #Establishing threshold as the cut
-            over = np.where(hmap>thresh, 1, 0)
+        #Optional restriction to see if the continuous stations have a distribution that aligns better (make sure it matches below)
+        #working=working.loc[working["Organization"].isin(cont_orgs)]
 
-            #Readding nans for better visualization
-            over=np.where(np.isnan(hmap), np.nan, over)
+        by_station=working.drop_duplicates(subset=["Station ID"]).copy()
+        by_station.drop("Day", axis=1, inplace=True)
+        stations=pd.DataFrame(working.drop_duplicates(subset=["Station ID"])["Station ID"])
+        #print(stations)
+        day_list=pd.DataFrame(days, columns=["Day"])
+        #print(day_list)
+        cross = stations.merge(day_list, how = "cross")
+        #print(cross)
+        cross = cross.merge(by_station, how="left", on="Station ID")
+        reindexed=cross[indep_var].copy()
+        #print(reindexed.head)
 
-            if len(total)>1:
-                total += over
-            else:
-                total = over
-        hax[i, j].hist(total.flatten(), bins=20)
-        hax[i, j].set_title("Days over Threshold of " + str(thresh) + " degrees (C) Model, " + str(year), fontsize=18)
-        hax[i, j].set_xlim(day_limits)
-plt.savefig("Graphs/Days_over_Thresholds_Distributions_Model.png")
-plt.show()
+        #Normalizing predictors
+        X_pred = reindexed.values
+        X_pred=X_pred - np.mean(X_pred, axis=0)
+        X_pred=X_pred / np.std(X_pred, axis=0)
 
+        #Using reindexed in prediction
+        y_pred, MSE = models[year].predict(X_pred, return_std=True)
+        y_pred+=ymeans[year]
+        #print(ymeans[year])
+
+        #Adding modeled data back into predictors
+        reindexed["Temperature (C)"]=y_pred
+        #print(reindexed)
+
+        #Adding back in station ID
+        reindexed["Station ID"]=cross["Station ID"]
+        
+        #Getting pct of days over threshold
+        reindexed["Threshold"]= reindexed["Temperature (C)"]>thresh
+        reindexed["Threshold"]=reindexed["Threshold"].astype(int)
+        reindexed = reindexed.groupby("Station ID")["Threshold"].sum()/reindexed.groupby("Station ID")["Threshold"].count()
+        
 #Plotting from Underlying Data
-hfig, hax =plt.subplots(len(years), len(thresholds), squeeze=True)
 
-total = np.zeros(1)
-for i, year in enumerate(years):
-    for j, thresh in enumerate(thresholds):
-        #Getting year's data by station
-        working = df.loc[(df["Year"]==year) & (lat_min<=df["Latitude"]) & (df["Latitude"]<=lat_max) & (lon_min<=df["Longitude"]) & (df["Longitude"]<=lon_max)].copy()
+        #Getting year's data by station in range defined earlier in notebook
+        working = df.loc[(df["Year"]==year)].copy()
         working["Threshold"]= working["Temperature (C)"]>thresh
         working["Threshold"]=working["Threshold"].astype(int)
-        working = working.groupby("Station ID")["Threshold"].sum()
-        print(working.head())
-        hax[i, j].hist(working, bins=20)
-        hax[i, j].set_title("Days over Threshold of " + str(thresh) + " degrees (C) Data, " + str(year), fontsize=18)
-        hax[i, j].set_xlim(day_limits)
-plt.savefig("Graphs/Days_over_Thresholds_Distributions_Data.png")
+        working = working.groupby("Station ID")["Threshold"].sum()/working.groupby("Station ID")["Threshold"].count()
+        #print(working.head())
+        
+        
+        hax[i, j].boxplot([reindexed, working], vert=0)
+        hax[i, j].set_yticklabels(["Model", "Data"])
+        hax[i, j].set_xlabel("Days")
+        hax[i, j].set_title("Pct Days over " + str(thresh) + " deg (C) Model vs. Data, " + str(year), fontsize=18)
+fig.suptitle("Eastern Sound", fontsize=18)        
+plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Pct_Days_over_Thresholds_BandW.png")
 plt.show()
 
 # -

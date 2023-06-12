@@ -210,6 +210,9 @@ array
 array=np.where(array==0, np.nan, array)
 array
 
+#Restricting to parts of the sound with lower error
+array=np.where(array>.125, np.nan, array)
+
 array.shape
 
 plt.imshow(array)
@@ -228,13 +231,9 @@ print(len(df))
 df.dropna(subset=["Station ID", "Longitude", "Latitude", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
 
-# +
-# #Optional Restriction of TRAINING params to Eastern Sound
-# df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
-# print(len(df))
-# -
-
-# ^The above restriction destroys the model's ability to find meaningful hyperparameters, which shows that training on the LIS as a whole is clearly preferable
+#Optional Restriction of TRAINING params to Eastern Sound
+df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
+print(len(df))
 
 pd.unique(df["Organization"])
 
@@ -444,8 +443,8 @@ cax = efig.add_axes([0.1,0.05,0.8,0.03])
 cbar = efig.colorbar(eim, cax=cax, orientation='horizontal')
 cbar.set_label('Standard Deviation in Deg C')
 
-hfig.savefig("Graphs/Time_Dependent_Heatmaps.png")
-efig.savefig("Graphs/Time_Dependent_Errors.png")
+hfig.savefig("Graphs/June_Heatmaps/ES_Heatmaps.png")
+efig.savefig("Graphs/June_Heatmaps/ES_Dependent_Errors.png")
 
 plt.show()
 # -
@@ -478,7 +477,7 @@ for i, year in enumerate(years):
     cbar.set_label('Deg C', rotation=270, fontsize=24)
     cbar.ax.tick_params(labelsize=24)
     plt.axis("off")
-    plt.savefig("Graphs/Time_Dependent_Summer_Average_" + str(year) + ".png")
+    plt.savefig("Graphs/June_Heatmaps/ES_Summer_Average_" + str(year) + ".png")
     plt.show()
     
 
@@ -514,7 +513,7 @@ cbar = hfig.colorbar(him, cax=cax, orientation='horizontal')
 cbar.set_label('Count of Days', fontsize=24)
 cbar.ax.tick_params(labelsize=24)
 [ax.set_axis_off() for ax in hax.ravel()]
-plt.savefig("Graphs/Days_over_Thresholds.png")
+plt.savefig("Graphs/June_Heatmaps/ES_Days_over_Thresholds.png")
 plt.show()
 # -
 
