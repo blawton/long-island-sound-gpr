@@ -141,6 +141,16 @@ print(len(df))
 df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
 print(len(df))
 
+#Summary of df by orgs
+df.groupby(["Year", "Organization"]).count()
+
+df.groupby(["Year", "Organization"]).mean()
+
+# +
+# #Optionally removing discrete USGS data
+# df=df.loc[df["Organization"]!="USGS_Discrete"]
+# -
+
 pd.unique(df["Organization"])
 
 #Getting list of continuous organizations for alphas (move to YAML)
@@ -271,7 +281,7 @@ for i, year in enumerate(years):
     plt.xlim(temp_limits)
     plt.title("ES Summer Average Model Temperature Distribution, " + str(year), fontsize=24)
 
-    plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distribution_Model_" + str(year) + ".png")
+    #plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distribution_Model_" + str(year) + ".png")
     plt.show()
     
     #Plotting from underlying data
@@ -293,7 +303,7 @@ for i, year in enumerate(years):
     plt.xlim(temp_limits)
     plt.title("ES Summer Average Data Temperature Distribution, " + str(year), fontsize=24)
 
-    plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distribution_Data_" + str(year) + ".png")
+    #plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distribution_Data_" + str(year) + ".png")
     plt.show()
 
 # +
@@ -373,7 +383,7 @@ for i, year in enumerate(years):
     ax.set_yticklabels(["Model at Sample Locations", "Data at Sample Locations"])
     ax.set_ylabel("Group")
     ax.set_xlabel("Degrees (C)")
-    plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_BandW_" + str(year) + ".png")
+    #plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_BandW_" + str(year) + ".png")
     plt.show()
 
 # +
@@ -443,7 +453,7 @@ for i, year in enumerate(years):
         hax[i, j].set_xlabel("Days")
         hax[i, j].set_title("Pct Days over " + str(thresh) + " deg (C) Model vs. Data, " + str(year), fontsize=18)
 fig.suptitle("Eastern Sound", fontsize=18)        
-plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Pct_Days_over_Thresholds_BandW.png")
+#plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Pct_Days_over_Thresholds_BandW.png")
 plt.show()
 
 # -
