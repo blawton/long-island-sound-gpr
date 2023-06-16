@@ -80,8 +80,26 @@ The input dataset, as mentioned in the disclaimer above, consists of a number of
       2. Longitude
       3. Day
       4. embay_dist
-## 3. Preliminary Results/Heatmaps
+## 3. Preliminary Results/Graphs
+   As noted above, the results of the model for both the overall and the Eastern Sound make it very clear when the model works and when it does not work. The first test performed to see alignment of underlying data with results was a fairly simple test, namely a comparison of the distribtuion of summer averages at sampling stations. This initial metric was chosen because a simple comparison of distribution of model predicted temperatures at sample locations vs sampled temperatures would result in a difference in population for the two distributions in question. The model produces data on each day of the growing season (July 1st to August 31st) whereas most of the monitoring stations are discretely sampled, meaning they have only 4 datapoints for the growing season, spaced out every 2 weeks. This means that while model-predicted data has an even allocation between continuously-sampled locations and discrete stations, the actual sample data is skewed much more towards the continuous stations.
 
+   By taking a summer average at every station, we avoid this effect, and in a sense use a model that first uses all available data to predict daily temperatures (more accurately daily morning temperatures because of the averaging in the 6am to 8am window mentioned above), then averages together these daily temperatures to a summer average that can be compared to the summer average of sampled data at any station. We should expect the actual station data to have fatter tails because some of the averages are only averages of 4 data points vs. the 60 or so data points modelled for every station. The results for each year can be found for both the Eastern Sound window and the overall Long Island Sound by looking in the corresponding folder in [June_Graphs](https://github.com/blawton/long-island-sound-gpr/tree/master/Graphs/June_Graphs). 
+
+   The graphs show alignment in distribution when looking at the overall LISS in 2019, 2020, and 2021.
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/9a188e04-0a1f-489e-a236-0c3e81fa4350)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/12f5b21d-0625-4db1-9c2d-e12b02731aba)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/564b03ba-c027-492f-b7ec-c8f1f9008704)
+
+However, we can see that as a result of limits in dataset size, this relationship falls apart for the eastern sound specfically in all years with the possible exception of 2021:
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/d5a037a8-c533-4793-a05e-c8280e10d8a6)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/5bdfdcb3-c57d-4223-94ac-fabb0046db15)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/095dea99-6c04-4355-b4f8-116912e913b5)
 
 ## References
 
