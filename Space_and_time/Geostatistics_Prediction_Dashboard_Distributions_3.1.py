@@ -61,7 +61,11 @@ lon_max=-71.811481513000
 lat_min=40.970592192000
 lat_max=41.545060950000
 
+#Whether or note to restrict to the Eastern Sound window
+es=True
+
 #Variables
+
 station_var=["Station ID"]
 #(order matters here because of how get_heatmap_inputs works)
 indep_var=["Longitude", "Latitude", "embay_dist", "Day"]
@@ -137,19 +141,15 @@ print(len(df))
 df.dropna(subset=["Station ID", "Longitude", "Latitude", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
 
-#Optional Restriction of TRAINING and later testing params to Eastern Sound
-df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
-print(len(df))
+# #Optional Restriction of TRAINING and later testing params to Eastern Sound
+if es==True:
+    df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
+    print(len(df))
 
 #Summary of df by orgs
 df.groupby(["Year", "Organization"]).count()
 
 df.groupby(["Year", "Organization"]).mean()
-
-# +
-# #Optionally removing discrete USGS data
-# df=df.loc[df["Organization"]!="USGS_Discrete"]
-# -
 
 pd.unique(df["Organization"])
 
@@ -180,8 +180,8 @@ def build_model(predictors, year, kernel, alpha):
     X_train=X_train - np.mean(X_train, axis=0)
     X_train=X_train / np.std(X_train, axis=0)
     
-    #Constructing Process
-    gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha)
+    #Constructing Process (training turned off because fixed kernel used)
+    gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha, optimizer=None)
 
 
     #Training Process
@@ -213,16 +213,48 @@ cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 display_days={"July": 196, "August": 227}
 
 #Dicts for storage of models
-kernels = {}
+kernels_liss = {2019: 1.02**2 * RBF(length_scale=[0.0301, 0.131, 1.74e+03, 0.18]) + 3.02**2 * RationalQuadratic(alpha=0.216, length_scale=2.02),
+2020:0.921**2 * RBF(length_scale=[0.072, 0.0981, 39.7, 0.139]) + 5.72**2 * RationalQuadratic(alpha=0.127, length_scale=4.25),
+2021:0.959**2 * RBF(length_scale=[0.316, 0.183, 156, 0.113]) + 2.61**2 * RationalQuadratic(alpha=0.0857, length_scale=2.1)
+}
+kernels_es = {2019: 0.953**2 * RBF(length_scale=[0.408, 0.00451, 62.6, 2.17]) + 4.05**2 * RationalQuadratic(alpha=0.0344, length_scale=0.872),
+2020: 0.722**2 * RBF(length_scale=[0.00557, 1.01e+03, 441, 2.36]) + 3.83**2 * RationalQuadratic(alpha=0.0333, length_scale=0.719),
+2021: 1.09**2 * RBF(length_scale=[4.26, 3.05e+03, 1.75, 0.0965]) + 3.39**2 * RationalQuadratic(alpha=0.0367, length_scale=0.967)     
+}
 errors= {}
 models = {}
 hmaps= {}
 ymeans = {}
 # -
 
+#Run this cell once to get the actual model trained on data and then run one of the two cells below to retrieve the (fixed) hyperparams of the model
 for year in years:
     #Getting models and ymeans outputted
     models[year], ymeans[year] = build_model(predictors, year, kernel, alpha)
+    print(models[year].kernel_)
+
+#Saving Kernels
+if es:
+    string_kernels=[str(models[year].kernel_) for year in years]
+    kernels = pd.DataFrame({"Year":years, "Kernel":string_kernels})
+    kernels.to_csv("Results/ES_kernels.csv")
+else:
+    string_kernels=[str(models[year].kernel_) for year in years]
+    kernels = pd.DataFrame({"Year":years, "Kernel":string_kernels})
+    #kernels.to_csv("Results/LISS_kernels.csv")
+
+
+#Loading Kernels
+#Eastern Sound model
+if es:
+    for year in years:
+        #Getting models and ymeans outputted
+        models[year], ymeans[year] = build_model(predictors, year, kernels_es[year], alpha)
+else:
+#Entire LISS model
+    for year in years:
+    #Getting models and ymeans outputted
+        models[year], ymeans[year] = build_model(predictors, year, kernels_liss[year], alpha)
 
 # # Plots of distributions
 
@@ -234,6 +266,8 @@ cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 plt.rcParams["figure.figsize"]=(15, 10)
 
 for i, year in enumerate(years):
+    
+    fig, ax=plt.subplots(2, 1)
     
     #Retrieving data WITHIN AREA DEFINED ABOVE and creating reindexed dataframe with every day present to feed into model
     working = df.loc[(df["Year"]==year)].copy()
@@ -277,16 +311,17 @@ for i, year in enumerate(years):
     
     #Plotting from model
     weights=np.ones_like(reindexed["Temperature (C)"])/len(reindexed)
-    plt.hist(reindexed["Temperature (C)"], weights=weights, edgecolor="black", bins=20)
-    plt.xlim(temp_limits)
-    plt.title("ES Summer Average Model Temperature Distribution, " + str(year), fontsize=24)
+    ax[0].hist(reindexed["Temperature (C)"], weights=weights, edgecolor="black", color="tab:blue", bins=20)
+    ax[0].set_xlim(temp_limits)
+    if es:
+        ax[0].set_title("ES Summer Average Model Temperature Distribution, " + str(year), fontsize=18)
+    else:
+        ax[0].set_title("LISS Summer Average Model Temperature Distribution, " + str(year), fontsize=18)
 
-    #plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distribution_Model_" + str(year) + ".png")
-    plt.show()
+    ax[0].set_ylabel("Frequency")
+    ax[0].set_xlabel("Temperature (C)")
     
     #Plotting from underlying data
-    
-    fig, ax = plt.subplots()
     
     #Averaging year's data by station WITHIN AREA DEFINED ABOVE
     working = df.loc[(df["Year"]==year)].copy()
@@ -299,11 +334,24 @@ for i, year in enumerate(years):
 
     print(working.head())
     weights=np.ones_like(working["Temperature (C)"])/len(working)
-    plt.hist(working["Temperature (C)"], weights=weights, edgecolor="black", bins=20)
-    plt.xlim(temp_limits)
-    plt.title("ES Summer Average Data Temperature Distribution, " + str(year), fontsize=24)
-
-    #plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distribution_Data_" + str(year) + ".png")
+    ax[1].hist(working["Temperature (C)"], weights=weights, edgecolor="black", color="tab:orange", bins=20)
+    ax[1].set_xlim(temp_limits)
+    
+    if es:
+        ax[1].set_title("ES Summer Average Data Temperature Distribution, " + str(year), fontsize=18)
+    else:
+        ax[1].set_title("LISS Summer Average Data Temperature Distribution, " + str(year), fontsize=18)
+        
+    ax[1].set_ylabel("Frequency")
+    ax[1].set_xlabel("Temperature (C)")
+    if es:
+        plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distributions_" + str(year) + ".png")
+        plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distributions_" + str(year) + ".png")
+    else:
+        plt.savefig("Graphs/June_Graphs/LISS_Overall/LISS_Summer_Average_Distributions_" + str(year) + ".png")
+        plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/LISS_Overall/LISS_Summer_Average_Distributions_" + str(year) + ".png")
+    
+    fig.tight_layout()
     plt.show()
 
 # +
@@ -379,11 +427,19 @@ for i, year in enumerate(years):
     #Plotting
     plt.boxplot(lines, vert=0)
     plt.xlim(temp_limits)
-    plt.title("ES Summer Average Model vs. Data Temperature Distribution, " + str(year), fontsize=24)
+    if es:
+        plt.title("ES Summer Average Model vs. Data Temperature Distribution, " + str(year), fontsize=24)
+    else:
+        plt.title("LISS Summer Average Model vs. Data Temperature Distribution, " + str(year), fontsize=24)
     ax.set_yticklabels(["Model at Sample Locations", "Data at Sample Locations"])
     ax.set_ylabel("Group")
     ax.set_xlabel("Degrees (C)")
-    #plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_BandW_" + str(year) + ".png")
+    if es:
+        plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_BandW_" + str(year) + ".png")
+        plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_BandW_" + str(year) + ".png")
+    else:
+        plt.savefig("Graphs/June_Graphs/LISS_Overall/LISS_Summer_Average_BandW_" + str(year) + ".png")
+        plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/LISS_Overall/LISS_Summer_Average_BandW_" + str(year) + ".png")
     plt.show()
 
 # +
@@ -452,8 +508,11 @@ for i, year in enumerate(years):
         hax[i, j].set_yticklabels(["Model", "Data"])
         hax[i, j].set_xlabel("Days")
         hax[i, j].set_title("Pct Days over " + str(thresh) + " deg (C) Model vs. Data, " + str(year), fontsize=18)
-fig.suptitle("Eastern Sound", fontsize=18)        
-#plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Pct_Days_over_Thresholds_BandW.png")
+fig.suptitle("Eastern Sound", fontsize=18)
+if es:
+    plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Pct_Days_over_Thresholds_BandW.png")
+else:
+    plt.savefig("Graphs/June_Graphs/LISS_Overall/LISS_Pct_Days_over_Thresholds_BandW.png")
 plt.show()
 
 # -
