@@ -1,7 +1,7 @@
 # long-island-sound-gpr
 Preliminary python code and parameter optimization for forthcoming paper supported by my ORISE fellowship.  General approach is a Gaussian Process Regression of temperatures within embayments of the Long Island Sound, partially inspired by other GPR applications to water quality parameters, such as [1] and [6]. The goal of this model is to have fine-grained (within embayment) temperature data in order to assess susceptibility of eelgrass habitats to warm temperatures and climate change.
 
-__Acknowledgement of Support:__
+## Acknowledgement of Support
 This research was supported in part by an appointment to the U.S. Environmental Protection Agency (EPA) Research Participation Program administered by the Oak Ridge Institute for Science and Education (ORISE) through an interagency agreement between the U.S. Department of Energy (DOE) and the U.S. Environmental Protection Agency. ORISE is managed by ORAU under DOE contract number DE-SC0014664. All opinions expressed herein are the author's and do not necessarily reflect the policies and views of US EPA, DOE, or ORAU/ORISE.
 
 ## Disclaimer
@@ -17,7 +17,7 @@ It is also worth noting that all the python code here, with the exception of a f
     * Procedure for cleaning input dataset
 3. Preliminary Results/Heatmaps
 
-### 1. Current Status (6/15/2023)
+## 1. Current Status (6/15/2023)
 
 The model for predicting a daily heatmap in the long island sound based on continuous and discrete data from that year can now be considered in production, as the hyperparameters, kernel, and processing of data used as an input have all been chosen. Initial results demonstrate when the model accurately captures the distribution of data at sampling stations and produces a realistic heatmap vs. when it does not. In particular, we are concerned most with the area where eelgrass is almost exclusively restricted to: the Eastern Sound. This window was defined for the purposes of this project by:
 
@@ -28,9 +28,9 @@ The model for predicting a daily heatmap in the long island sound based on conti
    
 The threshold for an accurate temperature map in this window appears to be the number of continuos monitoring stations in the sound, which makes sense as without the sample size provided by data coming in at least on a daily basis, a gaussian process is not a well-chosen model.
 
-### 2. Production Model
+## 2. Production Model
 
-#### Using Cross Validation to Train Hyperparameters
+### Using Cross Validation to Train Hyperparameters
 
 The kernel and amount of noise to use in this model, within the limitations of scikit learn's kernel implementation, were determined by 5 fold (grouped) cross validation, which was performed on the overall sound dataset, because even though the focus of this project is the Eastern Sound area defined above (where eelgrass is actually present), there is not enough data in this area for a gaussian process to be reliably trained in each year.
 
@@ -42,7 +42,7 @@ Cross validation was performed seperately 2019, 2020, and 2021 data, and candida
 
 For the actual hyperparameter optimization, two rounds of cross validation were conducted:
 
-**Round I:**
+### Cross Validation Round I
 Used to determine the exact kernel combination with the candidates (chosen as outlined above):
 1. 1\**2 * RBF(length_scale=[1, 1, 1, 1]) + 1**2 * RationalQuadratic(alpha=1, length_scale=1)
 2. 1\**2 * Matern(length_scale=[1, 1, 1, 1], nu=1.5) + 1**2 * RationalQuadratic(alpha=1, length_scale=1)
@@ -50,14 +50,56 @@ Used to determine the exact kernel combination with the candidates (chosen as ou
 
 Note: the parameters inside the kernel functions are just sklearns notation for the initial pre-training length scales, which are not incredibly important because a) data was normalzed and b) they are ultimately trained. The results of this training are in the [Results](https://github.com/blawton/long-island-sound-gpr/tree/master/Results) folder as "Optimization_with_Pre_Processing_results_[year].csv". The kernel combination that was settled on in the case of this model was the sum of an anisotropic radial basis function kernel with a rational quadratic kernel. These are two of the most popular kernels as explained in [2] below
 
-**Round II:**
+### Cross Validation Round II
 Used to determine alpha parameter, thus avoiding implementing a whitekernel with variable noise as part of the training process. The results of this training are in the [Results](https://github.com/blawton/long-island-sound-gpr/tree/master/Results) folder as "Parameter_Optimization_time_results_[year]_II.csv" and in this case, results led to the selection of an alpha parameter of .25. Because the output of the GPs were demeaned but not normalized, this corresponds to .25 degrees C. Diminishing returns were seen as alpha increased, suggesting .25 to be a near optimal level of noise.
 
-**Round 0:**
+### Cross Validation Round 0
 The one other csv in the results folder, [Parameter_Optimization_time_results_2019.csv](https://github.com/blawton/long-island-sound-gpr/tree/master/Results/Parameter_Optimization_time_results_2019.csv), is from an early round of training done only on 2019 data in order to validate that a combination of kernels performs better than a Radial Basis Function alone.
 
-#### Procedure for cleaning input dataset
+### Procedure for cleaning input dataset
 
+The input dataset, as mentioned in the disclaimer above, consists of a number of flat files obtained from water quality monitoring organizations, as well as files obtained by these data providers' apis. A considerable amount of effort went into both standardizing and processing all of this discordant data. This process can be divided into the following steps:
+
+1. Inital Aggregation of the data within each organization
+   * The scripts for this step and step 2 live in the corresponding provider's folder within the [Data](https://github.com/blawton/long-island-sound-gpr/tree/master/Data) folder of the overall repository
+2. Processing and outlier removal within each organization (for continuous data)
+   * The cleaning done varies by data type. In general not much was done to remove outliers of discrete data, but certain mislabellings of longitude, inconsistencies in naming, etc. were corrected in the same script used to read in the flat csv files
+   * Continuous time series were run through a basic despiking algorithm to remove clear outliers as well as remove temperature data at the beginning and end of each year's time series, which generally saw extreme values.
+3. Aggregation across organizations
+   * This step required a systematic relabelling of all the names of various independent variables, as well as the dependent variable (temperature) to match a standardized template
+   * For the production version of the model, this was handled in the script [Cross Org Aggregate_time.py](https://github.com/blawton/long-island-sound-gpr/blob/master/Space_and_time/Cross%20Org%20Aggregate_time.py)
+4. Grouping data by day (within a certain time window for continuous data)
+   * Also carried out in [Cross Org Aggregate_time.py](https://github.com/blawton/long-island-sound-gpr/blob/master/Space_and_time/Cross%20Org%20Aggregate_time.py)
+   * Uses [aggregate_dataset.py](https://github.com/blawton/long-island-sound-gpr/blob/master/Functions/aggregate_dataset.py) from the functions folder to either avergage entire days together from the continuous data or to average within the middle two quartiles of the times at which discrete data were sampled. This ends up being between 6 and 8am based on the quartiles for continuous data calculated in [Cross Org Aggregate_time.py](https://github.com/blawton/long-island-sound-gpr/blob/master/Space_and_time/Cross%20Org%20Aggregate_time.py)
+   * Discrete data doesn't have more than one measurement for day so it is simply labelled with its day of the year (all output data has day of year field as an integer)
+   * The production version of the model uses the continuous data averaged together within the 6am to 8am time window, the output file for which is not stored in the repository because it represents preliminary data from certain monitoring orgs, but will ultimately be uploaded to the repo
+5. Adding coastal features to data
+   * This is done in the script [Add_Coastal_Features.py](https://github.com/blawton/long-island-sound-gpr/blob/master/Add_Coastal_Features.py), which takes as inputs the output of step 4 (aggregated daily morning data) and an arcgis-produced distance allocation map (raster/geoTIFF file) that measures distance into each embayment for pixels in LIS embayments.
+   * The output of this step has a new parameter "embay_dist" representing distance into embayment, for a total of four independent variables:
+      1. Lattitude
+      2. Longitude
+      3. Day
+      4. embay_dist
+## 3. Preliminary Results/Graphs
+   As noted above, the results of the model for both the overall and the Eastern Sound make it very clear when the model works and when it does not work. The first test performed to see alignment of underlying data with results was a fairly simple test, namely a comparison of the distribtuion of summer averages at sampling stations. This initial metric was chosen because a simple comparison of distribution of model predicted temperatures at sample locations vs sampled temperatures would result in a difference in population for the two distributions in question. The model produces data on each day of the growing season (July 1st to August 31st) whereas most of the monitoring stations are discretely sampled, meaning they have only 4 datapoints for the growing season, spaced out every 2 weeks. This means that while model-predicted data has an even allocation between continuously-sampled locations and discrete stations, the actual sample data is skewed much more towards the continuous stations.
+
+   By taking a summer average at every station, we avoid this effect, and in a sense use a model that first uses all available data to predict daily temperatures (more accurately daily morning temperatures because of the averaging in the 6am to 8am window mentioned above), then averages together these daily temperatures to a summer average that can be compared to the summer average of sampled data at any station. We should expect the actual station data to have fatter tails because some of the averages are only averages of 4 data points vs. the 60 or so data points modelled for every station. The results for each year can be found for both the Eastern Sound window and the overall Long Island Sound by looking in the corresponding folder in [June_Graphs](https://github.com/blawton/long-island-sound-gpr/tree/master/Graphs/June_Graphs). 
+
+   The graphs show alignment in distribution when looking at the overall LISS in 2019, 2020, and 2021.
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/9a188e04-0a1f-489e-a236-0c3e81fa4350)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/12f5b21d-0625-4db1-9c2d-e12b02731aba)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/564b03ba-c027-492f-b7ec-c8f1f9008704)
+
+However, we can see that as a result of limits in dataset size, this relationship falls apart for the eastern sound specfically in all years with the possible exception of 2021:
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/d5a037a8-c533-4793-a05e-c8280e10d8a6)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/5bdfdcb3-c57d-4223-94ac-fabb0046db15)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/095dea99-6c04-4355-b4f8-116912e913b5)
 
 ## References
 
