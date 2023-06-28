@@ -115,7 +115,9 @@ agg_summer_means=pd.concat(list(aggregated.values()), axis=0)
 
 agg_summer_means
 
-agg_summer_means.to_csv("Data/Space_and_time_agg/agg_summer_means_daily.csv")
+# +
+#agg_summer_means.to_csv("Data/Space_and_time_agg/agg_summer_means_daily.csv")
+# -
 
 # # Daily Summer Morning
 
@@ -159,7 +161,7 @@ organization_paths={'EPA_FISM':"Data/hobo_data_all_years/hobo_data_agg.csv",
                     'STS_Tier_II':"Data/STS Continuous Data/STS_Continuous_Data_Pre_Processing_4_12_2023.csv",
                     'STS_Tier_I':"Data/STS Discrete Data/STS_Discrete_4_13_2023.csv",
                     'USGS_Discrete':"Data/WQP/WQP_merged_no_STS_4_21_2023.csv",
-                    'URI': "Data/URIWW/URIWW_4_19_2023.csv",
+                    'URI': "Data/URIWW/URIWW_6_20_2023.csv",
                     'Dominion': "Data/Dominion Energy/C_and_NB_data_with_coords.csv",
                     'USGS_Cont': "Data/Mystic River/agg_fully_processed_temp_and_bottom_temp.csv"
                    }
@@ -259,4 +261,4 @@ agg_summer_means=pd.concat(list(aggregated.values()), axis=0)
 
 agg_summer_means
 
-agg_summer_means.to_csv("Data/Space_and_time_agg/agg_summer_means_daily_morning.csv")
+agg_summer_means.to_csv("Data/Space_and_time_agg/agg_summer_means_daily_morning_6_21.csv")

@@ -43,7 +43,7 @@ def daily(df):
     df.dropna(subset="Date", inplace=True)
 
     #Limiting to July and August (for now)
-    working=df.loc[(df["Month"]==7) | (df["Month"]==8)]
+    working=df.loc[(df["Day"]>=152) & (df["Day"]<=274)]
     means=pd.DataFrame(working.groupby(["Station ID",
                                           "Year", "Day"])["Temperature (C)"].mean())
     means.reset_index(inplace=True)

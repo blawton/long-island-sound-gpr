@@ -36,11 +36,13 @@ for i in np.arange(1, 4):
 #Both are inclusive
 depth_min=2
 depth_max=3
+days=range(152, 275)
+years=range(2019, 2022)
 # -
 
 # # Reading in and formatting data
 
-data=pd.read_csv(paths[1])
+data=pd.read_csv(paths[1], index_col=0)
 
 stations=pd.read_csv(paths[2])
 
@@ -52,6 +54,9 @@ data.dropna(subset=["temperature"], inplace=True)
 print(len(data))
 
 data["temperature"]=pd.to_numeric(data["temperature"])
+data
+
+
 
 data.head()
 
@@ -76,7 +81,80 @@ print(len(pd.unique(stations["station name"])))
 print(len(pd.unique(stations["MonitoringLocationName"])))
 stations.loc[stations.duplicated(subset=["station name"])]
 
-# # Averaging CTDEEP data by month and by station
+#Adding day of year variable to data
+data["Date"]=pd.to_datetime(data["Date"])
+data["Day"]=data["Date"].dt.dayofyear
+data["Year"]=data["Date"].dt.year
+
+# # Linear interpolation of CTDEEP data
+
+# +
+working=data.copy()
+
+#Selecting proper time range and averaging depth profile
+working=working.loc[(working["depth"]>=depth_min) & (working["depth"]<=depth_max)].copy(deep=True)
+working=working.loc[working["Year"].isin(years)].copy()
+
+#Averaging by part of the depth profile
+working=working.groupby(["station name", "Year", "Day"]).mean().reset_index()
+
+by_station=working.drop_duplicates(["station name", "Year"])[["station name", "Year"]]
+print(len(by_station))
+ddf=pd.DataFrame(data={"Day":days})
+
+#lengths should match up
+cross=by_station.merge(ddf, how="cross")
+print(len(cross)/len(days))
+
+reindexed=cross.merge(working, how="left", on=["station name", "Year", "Day"])
+reindexed.loc[~reindexed["temperature"].isna()]
+
+# +
+#Linear interpolation
+
+#sorting data by year
+reindexed.sort_values(by=["Year", "station name", "Day"], inplace=True)
+for year in years:
+    yeardf=data.loc[pd.to_datetime(data["Date"]).dt.year==year]
+    yearsta=pd.unique(yeardf["station name"])
+    for sta in yearsta:
+        working=reindexed.loc[(reindexed["Year"]==year) & (reindexed["station name"]==sta), "temperature"]
+        working=working.interpolate(method="linear", limit_area="inside")
+        reindexed.loc[(reindexed["Year"]==year) & (reindexed["station name"]==sta), "temperature"]=working
+        
+print(reindexed)        
+reindexed.dropna(subset=["temperature"], axis=0, inplace=True)
+reindexed
+# -
+
+#Dropping leading 0s on CTDEEP data before mergind
+reindexed["station name"]=reindexed["station name"].str.lstrip("0")
+
+ref_points.head()
+
+#Using reference pointsand station to get latitude and longitude
+ref_points=ref_points.loc[~ref_points["Latitude"].isna()]
+ref_points["Station Name"]=ref_points["Station Name"].str.lstrip("0")
+ref_points.rename(columns={"Latitude":"LatitudeMeasure", "Longitude":"LongitudeMeasure", "Station Name":"station name"}, inplace=True)
+stations=pd.concat([stations, ref_points])
+stations.drop_duplicates(subset=["station name"], inplace=True)
+
+stations
+
+#Merging with stations
+merged=reindexed.merge(stations[["station name", "LatitudeMeasure","LongitudeMeasure", "Subw_Embay", "Embay_Pt"]], how="left", on="station name")
+
+print(len(merged.groupby(["station name", "Year"]).count()))
+print(pd.unique(merged["station name"]))
+merged.dropna(subset=["LatitudeMeasure", "LongitudeMeasure"], inplace=True)
+print(len(merged.groupby(["station name", "Year"]).count()))
+print(pd.unique(merged["station name"]))
+
+merged.head()
+
+merged.to_csv("CT_DEEP_2019_to_2021_interpolated_inside.csv")
+
+# # Previous Work
 
 #Pre-processing for filtering
 data["depth"]=pd.to_numeric(data["depth"])
@@ -167,6 +245,8 @@ merged.drop("Station ID", axis=1, inplace=True)
 #Saving all data to file
 #merged.to_csv("CT_DEEP_means_4_5_2023.csv")
 # -
+
+
 
 # # Making geojsons for inverse-distance-weighting (optional)
 

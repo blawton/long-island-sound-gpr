@@ -61,17 +61,19 @@ paths[1]=config["Workbook_path1"]
 #If space
 #paths[2]="Data/Space_agg/agg_summer_means_4_21_2023_II.csv"
 #If space and time:
-paths[2]= "Data/Space_and_time_agg/agg_summer_means_daily_morning.csv"
+paths[2]= "Data/Space_and_time_agg/agg_summer_means_daily_morning_6_21.csv"
 
 #Ouput for Aggregate Data above but with embay_dist attached
 #If space
 #outputs[1]="Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
 #If space and time
-outputs[1]="Data/Space_and_time_agg/agg_daily_morning_coastal_features_5_17_2023.csv"
+outputs[1]="Data/Space_and_time_agg/agg_daily_morning_coastal_features_6_21_2023.csv"
 
 for path in paths.values():
     assert(os.path.exists(path))
 # -
+
+cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 
 # # Preparing and Testing Data (only run when data is updated)
 
@@ -143,57 +145,52 @@ df.loc[df["embay_dist"]==0]
 #Getting range of distances in df to ensure its similar to masked
 max(df["embay_dist"])-min(df["embay_dist"])
 
+working=df.copy()
+
 #Displaying figure along with all locations
 plt.figure()
 plt.imshow(array)
-working=df
 plt.scatter(working["xPixel"], working["yPixel"], s=1, c="Red")
 plt.show()
 
-#Stations in non-existent embayment (on final model)
-gol=df.loc[df["Station ID"].str.contains("GOL")]
-print(gol)
-df.drop(gol.index, axis=0, inplace=True)
-gol=df.loc[df["Station ID"].str.contains("GOL")]
-print(gol)
+# +
+# #Stations in non-existent embayment (on final model)
+# gol=df.loc[df["Station ID"].str.contains("GOL")]
+# print(gol)
+# df.drop(gol.index, axis=0, inplace=True)
+# gol=df.loc[df["Station ID"].str.contains("GOL")]
+# print(gol)
 
-#Fixing East Beach and Barleyfield Cove (These actually should have embay_dist=0)
-df.loc[df["Station ID"]=="East Beach", "embay_dist"] = 0
-df.loc[df["Station ID"]=="Barleyfield Cove", "embay_dist"] = 0
+# +
+# #Fixing East Beach and Barleyfield Cove (These actually should have embay_dist=0)
+# df.loc[df["Station ID"]=="East Beach", "embay_dist"] = 0
+# df.loc[df["Station ID"]=="Barleyfield Cove", "embay_dist"] = 0
+# -
 
-# ## Checking on stations in each year and outputting to file
+# ## Checking on stations 2019-2021 and outputting array
 
-# ### 2019
-
-display_array = np.where(array>0, .25, 0)
+display_array = np.where(array>0, np.nan, .5)
 display_array[0,0]=1
 
+working=working.loc[working["Year"].isin(range(2019, 2022))]
+
+#Figure 1a: all stations in the LIS
 plt.figure()
 plt.imshow(display_array)
-working=df.loc[df["Year"]==2019]
-plt.scatter(working["xPixel"], working["yPixel"], s=2, c="Red")
-plt.title("Sampling Locations 2019", size= "xx-large")
+plt.scatter(working["xPixel"], working["yPixel"], cmap="gray", vmin=0, vmax=1, marker="x", c="red")
+plt.title("Fig 1a: Sampling Locations", size= "xx-large")
 plt.axis("off")
+plt.savefig("Figures_for_paper/fig1a.png")
 plt.show()
 
-# ### 2020
-
+#Figure 1b: only continuous stations in the LIS
 plt.figure()
 plt.imshow(display_array)
-working=df.loc[df["Year"]==2020]
-plt.scatter(working["xPixel"], working["yPixel"], s=2, c="Red")
-plt.title("Sampling Locations 2020", size= "xx-large")
+working=working.loc[working["Organization"].isin(cont_orgs)]
+plt.scatter(working["xPixel"], working["yPixel"], cmap="gray", vmin=0, vmax=1, marker="x", c="red")
+plt.title("Fig 1b: Continuous Sampling Locations", size= "xx-large")
 plt.axis("off")
-plt.show()
-
-# ### 2021
-
-plt.figure()
-plt.imshow(display_array)
-working=df.loc[df["Year"]==2021]
-plt.scatter(working["xPixel"], working["yPixel"], s=2, c="Red")
-plt.title("Sampling Locations 2021", size= "xx-large")
-plt.axis("off")
+plt.savefig("Figures_for_paper/fig1b.png")
 plt.show()
 
 print(array.shape)

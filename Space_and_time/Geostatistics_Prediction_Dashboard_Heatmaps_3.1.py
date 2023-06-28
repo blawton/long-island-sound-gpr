@@ -61,6 +61,9 @@ lon_max=-71.811481513000
 lat_min=40.970592192000
 lat_max=41.545060950000
 
+#This should always be set to TRUE for this notebook
+es=True
+
 #Variables
 station_var=["Station ID"]
 #(order matters here because of how get_heatmap_inputs works)
@@ -115,7 +118,7 @@ paths[7] = config["Prediction_Dashboard_output"]
 #CSV
 
 #Training Data
-paths[5] =  "Data/Space_and_time_agg/agg_daily_morning_coastal_features_5_17_2023.csv"
+paths[5] =  "Data/Space_and_time_agg/agg_daily_morning_coastal_features_6_21_2023.csv"
 
 for path in paths.values():
     assert os.path.exists(path), path
@@ -211,11 +214,15 @@ array=np.where(array==0, np.nan, array)
 array
 
 #Restricting to parts of the sound with lower error
-array=np.where(array>.125, np.nan, array)
+array=np.where(array>.1, np.nan, array)
 
 array.shape
 
+plt.rcParams["figure.figsize"]=(20, 15)
+plt.axis("off")
 plt.imshow(array)
+plt.title("Fig 2: Embayments in Eastern Sound within Range of Model", fontsize=24)
+plt.savefig("Figures_for_paper/fig2.png")
 
 # ## Reading csv and building model
 
@@ -264,8 +271,8 @@ def build_model(predictors, year, kernel, alpha):
     X_train=X_train - np.mean(X_train, axis=0)
     X_train=X_train / np.std(X_train, axis=0)
     
-    #Constructing Process
-    gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha)
+    #Constructing Process (optimizer set to None because process is trained in "train_model")
+    gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha, optimizer=None)
 
 
     #Training Process
@@ -391,26 +398,51 @@ kernel = 1 * RBF([1]*predictors, length_scale_bounds=lsb) + 1 * RationalQuadrati
 years = [2019, 2020, 2021]
 
 #Days for showing model differentiation
-display_days={"July": 196, "August": 227}
+display_days={"July 15th": 196, "August 15th": 227}
 
 #Dicts for storage of models
+kernels_liss = {2019: 1.06**2 * RBF(length_scale=[0.0334, 0.135, 2.29e+03, 0.185]) + 2.85**2 * RationalQuadratic(alpha=0.266, length_scale=1.85),
+2020:0.939**2 * RBF(length_scale=[0.0683, 0.106, 7.87, 0.14]) + 5.53**2 * RationalQuadratic(alpha=0.126, length_scale=4.06),
+2021:1.09**2 * RBF(length_scale=[0.213, 0.159, 4.78, 0.122]) + 1.51**2 * RationalQuadratic(alpha=0.412, length_scale=1.26)
+}
+kernels_es = {2019: 0.645**2 * RBF(length_scale=[3.17, 3.04e+03, 6.03, 0.0479]) + 7.4**2 * RationalQuadratic(alpha=0.0217, length_scale=1.29),
+2020: 1.3**2 * RBF(length_scale=[4.42, 1e+05, 22.9, 0.054]) + 3.45**2 * RationalQuadratic(alpha=0.0324, length_scale=0.451),
+2021: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538)    
+}
+# #Using 2021 Kernel for All Years
+# kernels_es2 = {2019: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538),
+# 2020: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538),
+# 2021: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538)
+# }
+
+#Dicts for storage of models and model properties
 kernels = {}
-errors= {}
 models = {}
-hmaps= {}
 ymeans = {}
 # -
 
-for year in years:
-    #Getting models and ymeans outputted
-    models[year], ymeans[year] = build_model(predictors, year, kernel, alpha)
+#Loading Kernels
+#Eastern Sound model
+if es:
+    for year in years:
+        #Getting models and ymeans outputted
+        models[year], ymeans[year] = build_model(predictors, year, kernels_es[year], alpha)
+        #print(models[year].kernel_)
+else:
+#Entire LISS model
+    for year in years:
+        #Getting models and ymeans outputted
+        models[year], ymeans[year] = build_model(predictors, year, kernels_liss[year], alpha)
+        print(models[year].kernel_)
+
 
 # ## Heatmaps
 
+#Graphing Params
+plt.rcParams["figure.figsize"]=(30, 20)
+
 # +
 #Graphing selected days above
-
-plt.rcParams["figure.figsize"]=(40, 60)
 
 #Making Figures
 hfig, hax =plt.subplots(len(years), len(display_days), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
@@ -443,17 +475,21 @@ cax = efig.add_axes([0.1,0.05,0.8,0.03])
 cbar = efig.colorbar(eim, cax=cax, orientation='horizontal')
 cbar.set_label('Standard Deviation in Deg C')
 
-hfig.savefig("Graphs/June_Heatmaps/ES_Heatmaps.png")
-efig.savefig("Graphs/June_Heatmaps/ES_Dependent_Errors.png")
+hfig.savefig("Graphs/June_Heatmaps/ES2_Heatmaps.png")
+hfig.savefig("Figures_for_paper/fig4.png")
+
+efig.savefig("Graphs/June_Heatmaps/ES2_Dependent_Errors.png")
+efig.savefig("Figures_for_paper/fig5.png")
 
 plt.show()
 # -
 
 
-#Re-setting threshold params
+#Params for graphs to TIFFs
 thresholds = [24, 24.5, 25]
-stride =20
+stride =5
 days=range(172, 244)
+avg_hmaps= {}
 
 # +
 #Summer Averages
@@ -471,13 +507,14 @@ for i, year in enumerate(years):
         else:
             total = hmap
     total = total/len(range(172, 244))
+    avg_hmaps[year]=total
     avg = plt.imshow(total)
     plt.title("Summer Average Temperature, " + str(year), fontsize=24)
     cbar = fig.colorbar(avg, location="right", shrink=.75)
-    cbar.set_label('Deg C', rotation=270, fontsize=24)
+    cbar.set_label('Deg C', rotation=270)
     cbar.ax.tick_params(labelsize=24)
     plt.axis("off")
-    plt.savefig("Graphs/June_Heatmaps/ES_Summer_Average_" + str(year) + ".png")
+    plt.savefig("Graphs/June_Heatmaps/ES2_Summer_Average_" + str(year) + ".png")
     plt.show()
     
 
@@ -506,76 +543,19 @@ for i, year in enumerate(years):
                 total += over
             else:
                 total = over
-        him = hax[i, j].imshow(total, vmin=0, vmax=10)
+        him = hax[i, j].imshow(total)
         hax[i, j].set_title("Days over Threshold of " + str(thresh) + " degrees (C), " + str(year), fontsize=24)
 cax = hfig.add_axes([0.1,0.05,0.8,0.03])
 cbar = hfig.colorbar(him, cax=cax, orientation='horizontal')
-cbar.set_label('Count of Days', fontsize=24)
+cbar.set_label('Count of Days')
 cbar.ax.tick_params(labelsize=24)
 [ax.set_axis_off() for ax in hax.ravel()]
-plt.savefig("Graphs/June_Heatmaps/ES_Days_over_Thresholds.png")
+plt.savefig("Graphs/June_Heatmaps/ES2_Days_over_Thresholds.png")
 plt.show()
 # -
 
 
-# # Day-Specific Plots
-
-# ## 2019 (Mid-July)
-
-year=2019
-
-kernels[year], errors[year], hmaps[year] = model_output(year, stride, kernel=kernel, predictors=4, alpha=.25, day=196)
-
-
-# ## 2020 (Mid-July)
-
-year=2020
-
-kernels[year], errors[year], hmaps[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
-
-# ## 2021 (Mid-July)
-
-#Params
-year=2021
-
-kernels[year], errors[year], hmaps[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel,  predictors=4, day=196)
-
-# ## 2019 (Mid-August)
-
-year=2019
-
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
-
-
-# ## 2020 (Mid-August)
-
-year=2020
-
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
-
-
-# ## 2021 (Mid-August)
-
-year=2021
-
-kernels[year], errors[year], models[year] = model_output(discrete_error, cont_error, year, stride, kernel=kernel, predictors=4, day=227)
-
-
-# ## Kernels
-
-#(this time of the preferred modes (where 2019 is similar to 2020))
-kernels 
-
-#Standardized Reg
-kernels
-
-#Time reg with both kernels (July)
-kernels
-
-#Time reg with both kernels (August). Thesse should essentially be the same as above
-kernels
-
-# # Outputting TIFFs
+# ## Outputting TIFFs
 
 new_gt=(gt[0], gt[1]*stride, gt[2], gt[3], gt[4], gt[5]*stride)
 new_gt
@@ -585,33 +565,19 @@ for year in years:
     #Downloading geotiff of model
     driver = gdal.GetDriverByName("GTiff")
     driver.Register()
-    name = paths[7] + "Temperature_Model_3_" + str(year) + ".tif"
-    outds = driver.Create(name, xsize=models[year].shape[1], ysize=models[year].shape[0], bands=1, eType=gdal.GDT_Int16)
+    name = paths[7] + "Final_Temperature_Model_Summer_Average_" + str(year) + ".tif"
+    outds = driver.Create(name, xsize=avg_hmaps[year].shape[1], ysize=avg_hmaps[year].shape[0], bands=1, eType=gdal.GDT_Float32)
     outds.SetGeoTransform(new_gt)
     outds.SetProjection(proj)
     outband = outds.GetRasterBand(1)
-    outband.WriteArray(models[year])
-    outband.SetNoDataValue(np.nan)
-    outband.FlushCache()
-    outband=None
-    outds=None
-    
-    #Downloading geotiff of error
-    driver = gdal.GetDriverByName("GTiff")
-    driver.Register()
-    name = paths[7] + "Temperature_Model_3_Error_" + str(year) + ".tif"
-    outds = driver.Create(name, xsize=errors[year].shape[1], ysize=errors[year].shape[0], bands=1, eType=gdal.GDT_Int16)
-    outds.SetGeoTransform(new_gt)
-    outds.SetProjection(proj)
-    outband = outds.GetRasterBand(1)
-    outband.WriteArray(errors[year])
+    outband.WriteArray(avg_hmaps[year])
     outband.SetNoDataValue(np.nan)
     outband.FlushCache()
     outband=None
     outds=None
 
 #Testing saved geotiff
-name = paths[7] + "Temperature_Model_3_2021.tif"
+name = paths[7] + "Final_Temperature_Model_Summer_Average_2021.tif"
 test=gdal.Open(name)
 band=test.GetRasterBand(1)
 array=band.ReadAsArray()

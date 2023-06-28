@@ -62,7 +62,10 @@ lat_min=40.970592192000
 lat_max=41.545060950000
 
 #Whether or note to restrict to the Eastern Sound window
-es=True
+es=False
+
+#Tags of Organizations for Continous Monitoring
+cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 
 #Variables
 
@@ -221,28 +224,15 @@ kernels_es = {2019: 0.953**2 * RBF(length_scale=[0.408, 0.00451, 62.6, 2.17]) + 
 2020: 0.722**2 * RBF(length_scale=[0.00557, 1.01e+03, 441, 2.36]) + 3.83**2 * RationalQuadratic(alpha=0.0333, length_scale=0.719),
 2021: 1.09**2 * RBF(length_scale=[4.26, 3.05e+03, 1.75, 0.0965]) + 3.39**2 * RationalQuadratic(alpha=0.0367, length_scale=0.967)     
 }
+kernels_es2 = {2019: 1.09**2 * RBF(length_scale=[4.26, 3.05e+03, 1.75, 0.0965]) + 3.39**2 * RationalQuadratic(alpha=0.0367, length_scale=0.967),
+2020: 1.09**2 * RBF(length_scale=[4.26, 3.05e+03, 1.75, 0.0965]) + 3.39**2 * RationalQuadratic(alpha=0.0367, length_scale=0.967),
+2021: 1.09**2 * RBF(length_scale=[4.26, 3.05e+03, 1.75, 0.0965]) + 3.39**2 * RationalQuadratic(alpha=0.0367, length_scale=0.967),  
+}
 errors= {}
 models = {}
 hmaps= {}
 ymeans = {}
 # -
-
-#Run this cell once to get the actual model trained on data and then run one of the two cells below to retrieve the (fixed) hyperparams of the model
-for year in years:
-    #Getting models and ymeans outputted
-    models[year], ymeans[year] = build_model(predictors, year, kernel, alpha)
-    print(models[year].kernel_)
-
-#Saving Kernels
-if es:
-    string_kernels=[str(models[year].kernel_) for year in years]
-    kernels = pd.DataFrame({"Year":years, "Kernel":string_kernels})
-    kernels.to_csv("Results/ES_kernels.csv")
-else:
-    string_kernels=[str(models[year].kernel_) for year in years]
-    kernels = pd.DataFrame({"Year":years, "Kernel":string_kernels})
-    #kernels.to_csv("Results/LISS_kernels.csv")
-
 
 #Loading Kernels
 #Eastern Sound model
@@ -250,25 +240,50 @@ if es:
     for year in years:
         #Getting models and ymeans outputted
         models[year], ymeans[year] = build_model(predictors, year, kernels_es[year], alpha)
+        #print(models[year].kernel_)
 else:
 #Entire LISS model
     for year in years:
-    #Getting models and ymeans outputted
+        #Getting models and ymeans outputted
         models[year], ymeans[year] = build_model(predictors, year, kernels_liss[year], alpha)
+        print(models[year].kernel_)
+
+
+# # Defining Functions to Use for CTDEEP idw
+
+from Data import inverse_distance_weighter as idw
+
+
+#Make sure that the inverse distance weighter is loaded
+def interpolate_means(summer_means):
+    output=summer_means.copy(deep=True)
+    output["coords"]=output.apply(lambda x: [x["Latitude"], x["Longitude"]], axis=1)
+    output["interpolated"]=output.apply(idw.ct_deep_idw, axis=1, args=[1])
+    
+    #Unstacking is unneccesary because STS stations have diff coords each year
+    #output=output.unstack(level=-1)
+    
+    #Unnecessary to convert because datatype of year should be numeric for input
+    #output.columns=[int(year) for year in output.columns]
+    
+    return(output)
+
+
 
 # # Plots of distributions
 
-cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
+#Graphing param
+plt.rcParams["figure.figsize"]=(15, 10)
 
 # +
 #Summer Averages histogram
 
-plt.rcParams["figure.figsize"]=(15, 10)
-
 for i, year in enumerate(years):
     
-    fig, ax=plt.subplots(2, 1)
-    
+    fig, ax=plt.subplots(3, 1)
+
+#Plotting from model
+
     #Retrieving data WITHIN AREA DEFINED ABOVE and creating reindexed dataframe with every day present to feed into model
     working = df.loc[(df["Year"]==year)].copy()
     
@@ -285,7 +300,7 @@ for i, year in enumerate(years):
     #print(cross)
     cross = cross.merge(by_station, how="left", on="Station ID")
     reindexed=cross[indep_var].copy()
-    print(reindexed.head)
+    #print(reindexed.head)
     
     #Normalizing predictors
     X_pred = reindexed.values
@@ -295,7 +310,7 @@ for i, year in enumerate(years):
     #Using reindexed in prediction
     y_pred, MSE = models[year].predict(X_pred, return_std=True)
     y_pred+=ymeans[year]
-    print(ymeans[year])
+    #print(ymeans[year])
     
     #Adding modeled data back into predictors
     reindexed["Temperature (C)"]=y_pred
@@ -309,7 +324,6 @@ for i, year in enumerate(years):
     reindexed=reindexed.groupby("Station ID").mean()
     #print(reindexed)
     
-    #Plotting from model
     weights=np.ones_like(reindexed["Temperature (C)"])/len(reindexed)
     ax[0].hist(reindexed["Temperature (C)"], weights=weights, edgecolor="black", color="tab:blue", bins=20)
     ax[0].set_xlim(temp_limits)
@@ -321,7 +335,24 @@ for i, year in enumerate(years):
     ax[0].set_ylabel("Frequency")
     ax[0].set_xlabel("Temperature (C)")
     
-    #Plotting from underlying data
+#Plotting CTDEEP interpolated
+
+    #Adding year var for passing to idw function:    
+    reindexed["Year"]=year
+    ct_deep_int=interpolate_means(reindexed)
+    
+    weights=np.ones_like(ct_deep_int["interpolated"])/len(reindexed)
+    ax[1].hist(ct_deep_int["interpolated"], weights=weights, edgecolor="black", color="tab:blue", bins=20)
+    ax[1].set_xlim(temp_limits)
+    if es:
+        ax[1].set_title("ES Summer Average CTDEEP Interpolated Temperature Distribution, " + str(year), fontsize=18)
+    else:
+        ax[1].set_title("LISS Summer Average CTDEEP Interpolated Temperature Distribution, " + str(year), fontsize=18)
+
+    ax[1].set_ylabel("Frequency")
+    ax[1].set_xlabel("Temperature (C)")
+    
+#Plotting from underlying data
     
     #Averaging year's data by station WITHIN AREA DEFINED ABOVE
     working = df.loc[(df["Year"]==year)].copy()
@@ -332,18 +363,18 @@ for i, year in enumerate(years):
     #This can be commented out to see histogram of all datapoints (Make Sure it Matches Above)
     working = working.groupby("Station ID").mean()
 
-    print(working.head())
+    #print(working.head())
     weights=np.ones_like(working["Temperature (C)"])/len(working)
-    ax[1].hist(working["Temperature (C)"], weights=weights, edgecolor="black", color="tab:orange", bins=20)
-    ax[1].set_xlim(temp_limits)
+    ax[2].hist(working["Temperature (C)"], weights=weights, edgecolor="black", color="tab:orange", bins=20)
+    ax[2].set_xlim(temp_limits)
     
     if es:
-        ax[1].set_title("ES Summer Average Data Temperature Distribution, " + str(year), fontsize=18)
+        ax[2].set_title("ES Summer Average Data Temperature Distribution, " + str(year), fontsize=18)
     else:
-        ax[1].set_title("LISS Summer Average Data Temperature Distribution, " + str(year), fontsize=18)
+        ax[2].set_title("LISS Summer Average Data Temperature Distribution, " + str(year), fontsize=18)
         
-    ax[1].set_ylabel("Frequency")
-    ax[1].set_xlabel("Temperature (C)")
+    ax[2].set_ylabel("Frequency")
+    ax[2].set_xlabel("Temperature (C)")
     if es:
         plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distributions_" + str(year) + ".png")
         plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distributions_" + str(year) + ".png")
@@ -363,7 +394,7 @@ for i, year in enumerate(years):
     lines=[]
     fig, ax = plt.subplots()
     
-    #Plotting from model
+#Plotting from model
     
     #Getting year's data by station in range defined earlier in notebook
     working = df.loc[(df["Year"]==year)].copy()
@@ -408,7 +439,15 @@ for i, year in enumerate(years):
     #Adding to list to plot
     lines.append(reindexed["Temperature (C)"])
     
-    #Plotting from underlying data
+#Plotting CTDEEP interpolated
+
+    #Adding year var for passing to idw function:    
+    reindexed["Year"]=year
+    ct_deep_int=interpolate_means(reindexed)
+    
+    lines.append(ct_deep_int["interpolated"])
+
+#Plotting from underlying data
         
     #Getting year's data in range defined earlier in notebook
     working = df.loc[(df["Year"]==year)].copy()
@@ -431,7 +470,7 @@ for i, year in enumerate(years):
         plt.title("ES Summer Average Model vs. Data Temperature Distribution, " + str(year), fontsize=24)
     else:
         plt.title("LISS Summer Average Model vs. Data Temperature Distribution, " + str(year), fontsize=24)
-    ax.set_yticklabels(["Model at Sample Locations", "Data at Sample Locations"])
+    ax.set_yticklabels(["GPR Model at Sample Locations", "CT DEEP idw Model", "Data at Sample Locations"])
     ax.set_ylabel("Group")
     ax.set_xlabel("Degrees (C)")
     if es:
@@ -445,6 +484,9 @@ for i, year in enumerate(years):
 # +
 #Days over Chosen Threshold(s) box and whisker
 plt.rcParams["figure.figsize"]=(30, 30)
+
+#csv for all data
+all_data=dict(zip(years, [pd.DataFrame() for i in range(len(years))]))
 
 #Plotting from Model
 hfig, hax =plt.subplots(len(years), len(thresholds), squeeze=True)
@@ -503,11 +545,17 @@ for i, year in enumerate(years):
         working = working.groupby("Station ID")["Threshold"].sum()/working.groupby("Station ID")["Threshold"].count()
         #print(working.head())
         
-        
         hax[i, j].boxplot([reindexed, working], vert=0)
         hax[i, j].set_yticklabels(["Model", "Data"])
         hax[i, j].set_xlabel("Days")
         hax[i, j].set_title("Pct Days over " + str(thresh) + " deg (C) Model vs. Data, " + str(year), fontsize=18)
+
+#Exporting csv of Results for analysis:
+        all_data[year][str(thresh) + " (C)"]=working
+        all_data[year]["Year"]=year
+        
+agg_data=pd.concat(all_data)
+
 fig.suptitle("Eastern Sound", fontsize=18)
 if es:
     plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Pct_Days_over_Thresholds_BandW.png")
@@ -516,6 +564,32 @@ else:
 plt.show()
 
 # -
+
+# # Data Tables for Analysis
+
+# +
+#SUM OF Days over thresholds for continuous stations
+all_data=dict(zip(years, [pd.DataFrame() for i in range(len(years))]))
+
+for i, year in enumerate(years):
+    for j, thresh in enumerate(thresholds):
+        working = df.loc[(df["Year"]==year) & (df["Organization"].isin(cont_orgs))].copy()
+        working["Threshold"]= working["Temperature (C)"]>thresh
+        working["Threshold"]=working["Threshold"].astype(int)
+        working = working.groupby("Station ID")["Threshold"].sum()
+        
+        #Saving
+        all_data[year][str(thresh) + " (C)"]=working
+        all_data[year]["Year"]=year
+agg_data=pd.concat(all_data)
+agg_data=agg_data[agg_data.columns.sort_values()]
+if es:
+    agg_data.to_csv("Results/Data_Tables/ES_Continuous_Stations_Days_Over_Thresholds.csv")
+else:
+    agg_data.to_csv("Results/Data_Tables/LISS_Continuous_Stations_Days_Over_Thresholds.csv")
+# -
+
+
 
 # # Outputting TIFFs
 
