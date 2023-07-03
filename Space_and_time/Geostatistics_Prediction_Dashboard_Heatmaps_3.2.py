@@ -268,11 +268,13 @@ def build_model(predictors, year, kernel, alpha):
     y_train=y_train-y_mean
 
     #Normalizing predictors (X) for training sets
-    X_train=X_train - np.mean(X_train, axis=0)
-    X_train=X_train / np.std(X_train, axis=0)
+    x_mean = np.mean(X_train, axis=0)
+    x_std = np.std(X_train, axis=0)
+    X_train=X_train - x_mean
+    X_train=X_train / x_std
     
-    #Constructing Process (optimizer set to None because process is trained in "train_model")
-    gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha, optimizer=None)
+    #Constructing Process
+    gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha)
 
 
     #Training Process
@@ -401,19 +403,15 @@ years = [2019, 2020, 2021]
 display_days={"July 15th": 196, "August 15th": 227}
 
 #Dicts for storage of models
-kernels_liss = {2019: 1.06**2 * RBF(length_scale=[0.0334, 0.135, 2.29e+03, 0.185]) + 2.85**2 * RationalQuadratic(alpha=0.266, length_scale=1.85),
-2020:0.939**2 * RBF(length_scale=[0.0683, 0.106, 7.87, 0.14]) + 5.53**2 * RationalQuadratic(alpha=0.126, length_scale=4.06),
-2021:1.09**2 * RBF(length_scale=[0.213, 0.159, 4.78, 0.122]) + 1.51**2 * RationalQuadratic(alpha=0.412, length_scale=1.26)
+kernels_liss = {2019: 1.06**2 * RBF(length_scale=[0.0334, 0.135, 2.29e+03, 0.185], length_scale_bounds="fixed") + 2.85**2 * RationalQuadratic(alpha=0.266, length_scale=1.85, alpha_bounds="fixed", length_scale_bounds="fixed"),
+2020:0.939**2 * RBF(length_scale=[0.0683, 0.106, 7.87, 0.14], length_scale_bounds="fixed") + 5.53**2 * RationalQuadratic(alpha=0.126, length_scale=4.06, alpha_bounds="fixed", length_scale_bounds="fixed"),
+2021:1.09**2 * RBF(length_scale=[0.213, 0.159, 4.78, 0.122], length_scale_bounds="fixed") + 1.51**2 * RationalQuadratic(alpha=0.412, length_scale=1.26, alpha_bounds="fixed", length_scale_bounds="fixed")
 }
+
 kernels_es = {2019: 0.645**2 * RBF(length_scale=[3.17, 3.04e+03, 6.03, 0.0479]) + 7.4**2 * RationalQuadratic(alpha=0.0217, length_scale=1.29),
 2020: 1.3**2 * RBF(length_scale=[4.42, 1e+05, 22.9, 0.054]) + 3.45**2 * RationalQuadratic(alpha=0.0324, length_scale=0.451),
 2021: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538)    
 }
-# #Using 2021 Kernel for All Years
-# kernels_es2 = {2019: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538),
-# 2020: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538),
-# 2021: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538)
-# }
 
 #Dicts for storage of models and model properties
 kernels = {}
@@ -426,7 +424,7 @@ ymeans = {}
 if es:
     for year in years:
         #Getting models and ymeans outputted
-        models[year], ymeans[year] = build_model(predictors, year, kernels_es[year], alpha)
+        models[year], ymeans[year] = build_model(predictors, year, kernels_liss[year], alpha)
         #print(models[year].kernel_)
 else:
 #Entire LISS model
@@ -439,7 +437,7 @@ else:
 # ## Heatmaps
 
 #Graphing Params
-plt.rcParams["figure.figsize"]=(30, 20)
+plt.rcParams["figure.figsize"]=(30, 15)
 
 # +
 #Graphing selected days above
@@ -452,14 +450,20 @@ efig, eax =plt.subplots(len(years), len(display_days), gridspec_kw={'wspace':0, 
 for i, year in enumerate(years):
     for j, day in enumerate(display_days.values()):     
                 error, hmap = model_output(year, stride, models[year], ymeans[year], day)
+                
+                #Visualization Params
+                bottom=.15
+                top=.6
+                height=hmap.shape[0]
+                width=hmap.shape[1]
 
                 #hmap plot
-                him = hax[i, j].imshow(hmap, vmin=20, vmax=26)
-                hax[i, j].set_title("Temperature: " + list(display_days.keys())[j] + " " + str(year), fontsize=24)
+                him = hax[i, j].imshow(hmap[int(bottom*height):int(top*height), :], vmin=20, vmax=26)
+                hax[i, j].set_title(list(display_days.keys())[j] + " " + str(year), fontsize=18)
                 
                 #error plot
-                eim = eax[i, j].imshow(error, vmin=0, vmax=1.2)
-                eax[i, j].set_title("Standard Error: " + list(display_days.keys())[j] + " " + str(year), fontsize=24)
+                eim = eax[i, j].imshow(error[int(bottom*height):int(top*height), :], vmin=0, vmax=1.2)
+                eax[i, j].set_title(list(display_days.keys())[j] + " " + str(year), fontsize=18)
                 
 #Axes off
 [ax.set_axis_off() for ax in hax.ravel()]
@@ -468,28 +472,32 @@ for i, year in enumerate(years):
 #hmap cbar
 cax = hfig.add_axes([0.1,0.05,0.8,0.03])
 cbar = hfig.colorbar(him, cax=cax, orientation='horizontal')
-cbar.set_label('Deg C')
+cbar.set_label('Deg C', fontsize=24)
+cbar.ax.tick_params(labelsize=24)
 
 #error cbar
 cax = efig.add_axes([0.1,0.05,0.8,0.03])
 cbar = efig.colorbar(eim, cax=cax, orientation='horizontal')
-cbar.set_label('Standard Deviation in Deg C')
+cbar.set_label('Standard Deviation in Deg C', fontsize=24)
+hfig.suptitle("Figure 6: Gaussian Process-Predicted Temperature in Eastern Sound Embayments", fontsize=32)
+cbar.ax.tick_params(labelsize=24)
 
-hfig.savefig("Graphs/June_Heatmaps/ES2_Heatmaps.png")
-hfig.savefig("Figures_for_paper/fig4.png")
+hfig.savefig("Graphs/June_Heatmaps/ES_Heatmaps.png", bbox_inches='tight')
+hfig.savefig("Figures_for_paper/fig6.png", bbox_inches='tight')
 
-efig.savefig("Graphs/June_Heatmaps/ES2_Dependent_Errors.png")
-efig.savefig("Figures_for_paper/fig5.png")
+efig.savefig("Graphs/June_Heatmaps/ES_Dependent_Errors.png", bbox_inches='tight')
+#efig.savefig("Figures_for_paper/fig5b.png")
 
 plt.show()
 # -
 
 
-#Params for graphs to TIFFs
-thresholds = [24, 24.5, 25]
+#Params for graphs of thresholds and summer averages
+thresholds = [20, 25]
 stride =5
-days=range(172, 244)
+days=range(182, 244)
 avg_hmaps= {}
+thresh_hmaps={}
 
 # +
 #Summer Averages
@@ -506,7 +514,7 @@ for i, year in enumerate(years):
             total += hmap
         else:
             total = hmap
-    total = total/len(range(172, 244))
+    total = total/len(days)
     avg_hmaps[year]=total
     avg = plt.imshow(total)
     plt.title("Summer Average Temperature, " + str(year), fontsize=24)
@@ -514,7 +522,7 @@ for i, year in enumerate(years):
     cbar.set_label('Deg C', rotation=270)
     cbar.ax.tick_params(labelsize=24)
     plt.axis("off")
-    plt.savefig("Graphs/June_Heatmaps/ES2_Summer_Average_" + str(year) + ".png")
+    plt.savefig("Graphs/June_Heatmaps/ES_Summer_Average_" + str(year) + ".png")
     plt.show()
     
 
@@ -522,6 +530,7 @@ for i, year in enumerate(years):
 # +
 #Days over Chosen Threshold(s)
 plt.rcParams["figure.figsize"]=(60, 60)
+
 
 #Making Figures
 hfig, hax =plt.subplots(len(years), len(thresholds), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
@@ -545,17 +554,24 @@ for i, year in enumerate(years):
                 total = over
         him = hax[i, j].imshow(total)
         hax[i, j].set_title("Days over Threshold of " + str(thresh) + " degrees (C), " + str(year), fontsize=24)
+        
+        thresh_hmaps[str(year)+ "_" + str(thresh)] = total
+        
 cax = hfig.add_axes([0.1,0.05,0.8,0.03])
 cbar = hfig.colorbar(him, cax=cax, orientation='horizontal')
 cbar.set_label('Count of Days')
 cbar.ax.tick_params(labelsize=24)
 [ax.set_axis_off() for ax in hax.ravel()]
-plt.savefig("Graphs/June_Heatmaps/ES2_Days_over_Thresholds.png")
+plt.savefig("Graphs/June_Heatmaps/ES_Days_over_Thresholds.png")
 plt.show()
 # -
 
 
+thresh_hmaps
+
 # ## Outputting TIFFs
+
+# ### Summer Averages
 
 new_gt=(gt[0], gt[1]*stride, gt[2], gt[3], gt[4], gt[5]*stride)
 new_gt
@@ -585,5 +601,331 @@ plt.imshow(array)
 
 gt=test.GetGeoTransform()
 gt
+
+# # Updating EHSI
+
+# ## Old Temperature Component
+
+plt.rcParams["figure.figsize"]=(20, 15)
+
+# +
+#Creating average CTDEEP stations for years 2019-2021
+new_means=pd.read_csv("Data/CT_DEEP_means_4_5_2023.csv", index_col=0)
+
+#Restricting to years of interest
+new_means=new_means.loc[new_means["Year"].isin(years)]
+counts=new_means.groupby("station name").count().reset_index()
+
+#ensuring stations have 1 measurement/year
+stations=counts.loc[counts["Year"]==3, "station name"]
+
+new_means=new_means.loc[new_means["station name"].isin(stations)]
+new_means=new_means.groupby(["station name"])["temperature", "LatitudeMeasure", "LongitudeMeasure"].mean()
+new_means.to_csv("Data/ct_deep_temp_2019_2021.csv")
+
+# +
+import numpy as np
+import pandas as pd
+import os
+import json
+from json import dumps
+import matplotlib.pyplot as plt
+
+#Additional imports for distance calculations
+from sklearn.neighbors import DistanceMetric
+from math import radians
+
+#defining distance metric of choice
+dist = DistanceMetric.get_metric('haversine')
+
+#Reading in CT DEEP averages with fielpath for this program to be run elsewhere
+assert(os.path.exists('C:\\Users\\blawton\\Data Visualization and Analytics Challenge\\Data\\'))
+
+ct_means=pd.read_csv('C:\\Users\\blawton\\Data Visualization and Analytics Challenge\\Data\\ct_deep_temp_2019_2021.csv', index_col=0)
+                                 
+#Creating col for coords in radians and setting index
+ct_means["coords"]=ct_means.apply(lambda x: [radians(x["LatitudeMeasure"]), radians(x["LongitudeMeasure"])], axis=1)
+ct_means
+
+#Defining function of interest
+def ct_deep_idw(row, power):
+    coord=row.loc["coords"]
+    coord=[radians(deg) for deg in coord]    
+    distances=ct_means["coords"].apply(lambda x: (dist.pairwise([x, coord]))[0,1])
+    #print(distances)
+    
+    #Accounting for divide by zero by taking mean of first zero value
+    if min(distances)>0:
+        weights=1/distances
+        weights=np.power(weights, power)
+        weights=weights/weights.sum()
+    else:
+        return("Error: Divde by Zero")
+    
+    weighted=np.dot(weights, ct_means["temperature"])
+    return(weighted)
+
+
+
+# -
+
+#Make sure this stride matches the above stride
+stride=5
+
+
+#Make sure that the inverse distance weighter is loaded, this now requires a year variable"Year" and a day variable "Day" in each row
+def interpolate_means(data):
+    output=data.copy(deep=True)
+    output["coords"]=output.apply(lambda x: [x["Latitude"], x["Longitude"]], axis=1)
+    output["interpolated"]=output.apply(ct_deep_idw, axis=1, args=[1])
+    
+    #Unstacking is unneccesary because STS stations have diff coords each year
+    #output=output.unstack(level=-1)
+    
+    #Unnecessary to convert because datatype of year should be numeric for input
+    #output.columns=[int(year) for year in output.columns]
+    
+    return(output)
+
+
+## Getting IDW CTDEEP TEMP for 2009-2011
+X_pred, resampled, grid_shape = get_heatmap_inputs(stride, array, gt, 0)
+avg_temp=pd.DataFrame(X_pred, columns = indep_var)
+working=avg_temp.loc[~avg_temp["embay_dist"].isna()]
+print(working.shape)
+interped =interpolate_means(working)
+avg_temp["interpolated"]=np.nan
+avg_temp.loc[~avg_temp["embay_dist"].isna()]=interped
+print(avg_temp["embay_dist"])
+
+#Aggregating CTDEEP idw temperatures
+avg_temp=avg_temp["interpolated"].values.reshape(grid_shape)
+
+display =plt.imshow(avg_temp)
+plt.axis("off")
+cbar = plt.colorbar(display, location="right", shrink=.75)
+cbar.set_label('Temperature (C)', rotation=270, fontsize=18, labelpad=30)
+cbar.ax.tick_params(labelsize=18)
+plt.title("Figure 4: Inverse Distance Weighted CT DEEP temperature data in Eastern LIS", fontsize=24)
+plt.savefig("Figures_for_paper/fig4.png")
+
+bins=[0, 21, 21.4, 21.9, 22.3, 22.8, 23.2, 23.7, 24.1, 24.6, 25, 100]
+
+#Reclassifying
+reclass1=np.digitize(avg_temp, bins, right=False)
+reclass1=10-(reclass1-1)
+reclass1=np.where(~np.isnan(avg_temp), reclass1, np.nan)
+display = plt.imshow(reclass1, vmin=0, vmax=10)
+cbar = plt.colorbar(display, location="right", shrink=.75)
+cbar.set_label('Temperature Score (Open Sound Model)', rotation=270, fontsize=18, labelpad=30)
+cbar.ax.tick_params(labelsize=18)
+plt.axis("off")
+plt.tight_layout()
+
+# ## New Temperature Component
+
+years=[2019, 2020, 2021]
+
+#Averaging summer average heatmaps from 2019 through 2021
+avg_temp2= np.zeros(avg_hmaps[years[0]].shape)
+for key in avg_hmaps.keys():
+    print(key)
+    hmap=avg_hmaps[key]
+    avg_temp2+=avg_hmaps[key]
+avg_temp2=avg_temp2/len(avg_hmaps.keys())
+display = plt.imshow(avg_temp2)
+cbar = plt.colorbar(display, location="right", shrink=.75)
+cbar.set_label('Temperature', rotation=270, fontsize=18, labelpad=30)
+cbar.ax.tick_params(labelsize=18)
+plt.title("GP-Predicted Temperature in LIS Embayments (2019 through 2021)", fontsize=24)
+plt.axis("off")
+plt.tight_layout()
+
+bins=[0, 21, 21.4, 21.9, 22.3, 22.8, 23.2, 23.7, 24.1, 24.6, 25, 100]
+
+#Reclassifying new temperature heatmap
+reclass2=np.digitize(avg_temp2, bins, right=False)
+reclass2=10-(reclass2-1)
+reclass2=np.where(~np.isnan(avg_temp2), reclass2, np.nan)
+display=plt.imshow(reclass2)
+cbar = plt.colorbar(display, location="right", shrink=.75)
+cbar.set_label('Temperature Score', rotation=270, fontsize=18, labelpad=30)
+cbar.ax.tick_params(labelsize=18)
+plt.axis("off")
+plt.title("Gaussian Processs ")
+plt.tight_layout()
+
+# ## EHSI Difference
+
+# ### Raw Difference
+
+plt.rcParams["figure.figsize"]=(30, 20)
+
+display=plt.imshow(avg_temp-avg_temp2, cmap="seismic", vmin=-7, vmax=7)
+cbar = plt.colorbar(display, location="bottom", shrink=.75)
+cbar.set_label('Increase in Temp with Embayment Data + GP (Degrees (C))', fontsize=18, labelpad=30)
+cbar.ax.tick_params(labelsize=18)
+plt.axis("off")
+plt.title("Figure 7: GP Temperature Model and CTDEEP IDW comparison", fontsize=24)
+plt.savefig(paths[7] + "EHSI_open_sound_vs_embayment_bias_graph.png", )
+plt.savefig("Figures_for_paper/fig7.png", bbox_inches='tight')
+plt.show()
+
+# ### Reclassified Difference
+
+plt.rcParams["figure.figsize"]=(30, 20)
+
+display=plt.imshow(reclass1-reclass2, cmap="seismic", vmin=-7, vmax=7)
+cbar = plt.colorbar(display, location="bottom", shrink=.75)
+cbar.set_label('Bias in Temperature Score', fontsize=18, labelpad=30)
+cbar.ax.tick_params(labelsize=18)
+plt.axis("off")
+plt.title("EHSI Open Sound vs Embayment Bias Graph", fontsize=24)
+plt.show()
+
+# +
+#Final EHSI file cropped and resampled
+paths[4] = config["EHSI_Update_path4"]
+
+#Opening prior EHSI
+ehsi = gdal.Open(paths[4])
+band=ehsi.GetRasterBand(1)
+array_ehsi=band.ReadAsArray()
+
+#Slight reshaping
+print(array_ehsi.shape)
+array_ehsi=array_ehsi[:,:-1]
+print(array_ehsi.shape)
+print(array_ehsi.shape==array.shape)
+
+#The above reshaping implies there could be a mismatch of the grids on the order of 1 in 7000 of the total lenth of the eastern sound grid. This is an acceptable level of error for the purposes of this exercise
+
+#Fixing noise at the top
+array_ehsi[:150, :]=0
+
+#Rescaling to actual score (max should be 100)
+print(array_ehsi.max())
+array_ehsi+=27
+print(array_ehsi.max())
+array_ehsi=np.where(array_ehsi==27, np.nan, array_ehsi)
+
+#Striding array to match coastal stride of heatmap outputs
+ehsi_resampled=array_ehsi[0::stride, 0::stride].copy()
+print(ehsi_resampled.shape==reclass1.shape)
+
+#Matching nas to nas of predicted heatmap
+ehsi_resampled=np.where(np.isnan(reclass1), np.nan, ehsi_resampled)
+
+#Plotting
+fig, ax= plt.subplots()
+ehsi=plt.imshow(ehsi_resampled)
+fig.colorbar(ehsi, location="right", shrink=.75)
+plt.axis("off")
+# -
+
+#Adjusted EHSI
+adjusted=ehsi_resampled-2*(reclass1-reclass2)
+
+# +
+#Plotting new ehsi alongside old
+plt.rcParams["figure.figsize"]=(30, 20)
+
+#Graphing Params
+bottom=.25
+top=.6
+height=ehsi_resampled.shape[0]
+width=ehsi_resampled.shape[1]
+
+fig, ax= plt.subplots(2)
+display =ax[0].imshow(ehsi_resampled[int(height*bottom):int(height*top), :], vmin=60, vmax=100)
+ax[0].set_title("Original EHSI", fontsize=24)
+ax[0].axis("off")
+
+display=ax[1].imshow(adjusted[int(height*bottom):int(height*top), :], vmin=60, vmax=100)
+ax[1].set_title("Embayment Temperature EHSI", fontsize=24)
+ax[1].axis("off")
+
+cbar_ax = fig.add_axes([0, 0.15, 0.05, 0.7])
+cbar=fig.colorbar(display, shrink=.75, cax=cbar_ax)
+cbar.ax.tick_params(labelsize=18)
+cbar.set_label('EHSI Score', fontsize=18, labelpad=30)
+plt.savefig(paths[7] + "Graph_Comparison_Original_EHSI_vs_Embayment_Adjustment.png")
+plt.show()
+
+# -
+
+# ## Producing TIFFs
+
+new_gt=(gt[0], gt[1]*stride, gt[2], gt[3], gt[4], gt[5]*stride)
+new_gt
+
+# ### EHSI Bias
+
+#Downloading geotiff of model
+driver = gdal.GetDriverByName("GTiff")
+driver.Register()
+name = paths[7] + "Final_Temperature_Model_EHSI_bias.tif"
+outds = driver.Create(name, xsize=avg_hmaps[year].shape[1], ysize=avg_hmaps[year].shape[0], bands=1, eType=gdal.GDT_Float32)
+outds.SetGeoTransform(new_gt)
+outds.SetProjection(proj)
+outband = outds.GetRasterBand(1)
+outband.WriteArray(reclass1-reclass2)
+outband.SetNoDataValue(np.nan)
+outband.FlushCache()
+outband=None
+outds=None
+
+#Testing saved geotiff
+name = paths[7] + "Final_Temperature_Model_EHSI_bias.tif"
+test=gdal.Open(name)
+band=test.GetRasterBand(1)
+array=band.ReadAsArray()
+plt.imshow(array)
+
+# ### New EHSI Layer
+
+#Downloading geotiff of model
+driver = gdal.GetDriverByName("GTiff")
+driver.Register()
+name = paths[7] + "Final_Temperature_Model_Adjusted_EHSI.tif"
+outds = driver.Create(name, xsize=avg_hmaps[year].shape[1], ysize=avg_hmaps[year].shape[0], bands=1, eType=gdal.GDT_Float32)
+outds.SetGeoTransform(new_gt)
+outds.SetProjection(proj)
+outband = outds.GetRasterBand(1)
+outband.WriteArray(adjusted)
+outband.SetNoDataValue(np.nan)
+outband.FlushCache()
+outband=None
+outds=None
+
+#Testing saved geotiff
+name = paths[7] + "Final_Temperature_Model_Adjusted_EHSI.tif"
+test=gdal.Open(name)
+band=test.GetRasterBand(1)
+array=band.ReadAsArray()
+plt.imshow(array)
+
+# ### Original EHSI Layer
+
+#Downloading geotiff of model
+driver = gdal.GetDriverByName("GTiff")
+driver.Register()
+name = paths[7] + "Original_EHSI.tif"
+outds = driver.Create(name, xsize=avg_hmaps[year].shape[1], ysize=avg_hmaps[year].shape[0], bands=1, eType=gdal.GDT_Float32)
+outds.SetGeoTransform(new_gt)
+outds.SetProjection(proj)
+outband = outds.GetRasterBand(1)
+outband.WriteArray(ehsi_resampled)
+outband.SetNoDataValue(np.nan)
+outband.FlushCache()
+outband=None
+outds=None
+
+#Testing saved geotiff
+name = paths[7] + "Original_EHSI.tif"
+test=gdal.Open(name)
+band=test.GetRasterBand(1)
+array=band.ReadAsArray()
+plt.imshow(array)
 
 

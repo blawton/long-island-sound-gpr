@@ -61,13 +61,13 @@ paths[1]=config["Workbook_path1"]
 #If space
 #paths[2]="Data/Space_agg/agg_summer_means_4_21_2023_II.csv"
 #If space and time:
-paths[2]= "Data/Space_and_time_agg/agg_summer_means_daily_morning_6_21.csv"
+paths[2]= "Data/Dominion Energy/Millstone_Eelgrass_Mapping.csv"
 
 #Ouput for Aggregate Data above but with embay_dist attached
 #If space
 #outputs[1]="Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
 #If space and time
-outputs[1]="Data/Space_and_time_agg/agg_daily_morning_coastal_features_6_21_2023.csv"
+outputs[1]="Data/Dominion Energy/Millstone_Eelgrass_Mapping_coastal_features.csv"
 
 for path in paths.values():
     assert(os.path.exists(path))
@@ -104,7 +104,7 @@ cols
 
 # ## Appending coastal distance to data
 
-df=pd.read_csv(paths[2], index_col=0)
+df=pd.read_csv(paths[2])
 df
 
 pd.unique(df["Organization"])
@@ -121,10 +121,10 @@ df["embay_dist"]=df.apply(lambda x: array[x["yPixel"], x["xPixel"]], axis=1)
 max(df["embay_dist"])-min(df["embay_dist"])
 
 # +
-#Getting locations where dist is null or 0
-print(pd.unique(df.loc[df["embay_dist"].isna(), "Station ID"]))
+# #Getting locations where dist is null or 0
+# print(pd.unique(df.loc[df["embay_dist"].isna(), "Station ID"]))
 
-pd.unique(df.loc[df["embay_dist"]==0, "Station ID"])
+# pd.unique(df.loc[df["embay_dist"]==0, "Station ID"])
 # -
 
 # ## Interpolating Stations caught on Coastal Boundary
@@ -196,3 +196,5 @@ plt.show()
 print(array.shape)
 
 df.to_csv(outputs[1])
+
+

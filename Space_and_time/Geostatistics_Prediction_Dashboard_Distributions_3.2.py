@@ -73,6 +73,9 @@ es=True
 #Tags of Organizations for Continous Monitoring
 cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 
+#Years
+years=[2019, 2020, 2021]
+
 #Variables
 
 station_var=["Station ID"]
@@ -159,7 +162,9 @@ print(len(df))
 
 # #Optional Restriction of TRAINING and later testing params to Eastern Sound
 if es==True:
+    whole_sound=df.copy()
     df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
+    print(len(whole_sound))
     print(len(df))
 
 # # Data summaries
@@ -171,7 +176,7 @@ working.replace({"Dominion": "Dominion Power Plant", "EPA_FISM": "FISM"}, inplac
 working = working.groupby(["Year", "Organization"])["Station ID"].count()
 working=pd.DataFrame(working)
 working.rename(columns={"Station ID":"Number of Stations"}, inplace=True)
-working.to_csv("Figures_for_Paper/tab1.csv")
+#working.to_csv("Figures_for_Paper/tab1.csv")
 working
 
 #Non-continuous data frequencies
@@ -292,15 +297,11 @@ kernels_liss = {2019: 1.06**2 * RBF(length_scale=[0.0334, 0.135, 2.29e+03, 0.185
 2020:0.939**2 * RBF(length_scale=[0.0683, 0.106, 7.87, 0.14], length_scale_bounds="fixed") + 5.53**2 * RationalQuadratic(alpha=0.126, length_scale=4.06, alpha_bounds="fixed", length_scale_bounds="fixed"),
 2021:1.09**2 * RBF(length_scale=[0.213, 0.159, 4.78, 0.122], length_scale_bounds="fixed") + 1.51**2 * RationalQuadratic(alpha=0.412, length_scale=1.26, alpha_bounds="fixed", length_scale_bounds="fixed")
 }
-kernels_es = {2019: 0.645**2 * RBF(length_scale=[3.17, 3.04e+03, 6.03, 0.0479]) + 7.4**2 * RationalQuadratic(alpha=0.0217, length_scale=1.29),
-2020: 1.3**2 * RBF(length_scale=[4.42, 1e+05, 22.9, 0.054]) + 3.45**2 * RationalQuadratic(alpha=0.0324, length_scale=0.451),
-2021: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538)    
+kernels_es = {2019: 0.645**2 * RBF(length_scale=[3.17, 3.04e+03, 6.03, 0.0479], length_scale_bounds="fixed") + 7.4**2 * RationalQuadratic(alpha=0.0217, alpha_bounds="fixed", length_scale=1.29, length_scale_bounds="fixed"),
+2020: 1.3**2 * RBF(length_scale=[4.42, 1e+05, 22.9, 0.054], length_scale_bounds="fixed") + 3.45**2 * RationalQuadratic(alpha=0.0324, length_scale=0.451, alpha_bounds="fixed", length_scale_bounds="fixed"),
+2021: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052], length_scale_bounds="fixed") + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538, alpha_bounds="fixed", length_scale_bounds="fixed")    
 }
-#Using 2021 Kernel for All Years
-# kernels_es2 = {2019: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538),
-# 2020: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538),
-# 2021: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052]) + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538)
-# }
+
 errors= {}
 models = {}
 hmaps= {}
@@ -324,8 +325,6 @@ else:
         print(models[year].kernel_)
 
 
-assert(os.path.exists('C:\\Users\\blawton\\Data Visualization and Analytics Challenge\\Data\\'))
-
 # # Defining Functions to Use for CTDEEP idw
 
 from Data import inverse_distance_weighter as idw
@@ -345,6 +344,24 @@ def interpolate_means(daily_data):
     
     return(output)
 
+
+# # CTDEEP IDW RMSE
+
+idw_test=whole_sound.loc[whole_sound["Year"].isin(years)]
+
+concat = interpolate_means(idw_test)
+concat.loc[concat["Day"].isin(range(210, 213))]
+
+#Limiting to days in July/August for comparability
+rmse_range=range(182, 244)
+concat=concat.loc[concat["Day"].isin(rmse_range)].copy()
+concat["Error"]=concat["interpolated"]-concat["Temperature (C)"]
+concat["Squared Error"]=np.square(concat["Error"])
+mean_error=concat.groupby("Year").mean()["Squared Error"]
+mean_error=np.sqrt(mean_error)
+mean_error=pd.DataFrame(mean_error)
+mean_error.rename(columns={"Squared Error":"Root Mean Squared Error"}, inplace=True)
+mean_error
 
 # +
 #Generating CTDEEP interpolated time series for each station within each year
@@ -764,16 +781,20 @@ for j, year in enumerate(years):
         ax[i, j].set_xlim([min(days), max(days)])
         ax[i, j].tick_params(axis="x", labelsize=22)
         ax[i, j].tick_params(axis="y", labelsize=22)
-        fig.legend(["Gaussian Process", "Inverse Distance Weighting", "Discrete Datapoints"],  prop={'size': 25}, bbox_to_anchor=[1.05, 1.05])
+        fig.legend(["Gaussian Process", "Inverse Distance Weighting", "Discrete Datapoints"],  prop={'size': 25}, bbox_to_anchor=[1.15, 1.05])
         
-fig.suptitle("Fig 3a: Synthesizing Continuous Time Series from Discrete Datapoints", fontsize=32)
+fig.suptitle("Fig 5b: Synthesizing Continuous Time Series from Discrete Datapoints (Soundwide Hyperparameters)", fontsize=32)
 fig.supxlabel("Day of the Year", fontsize=24)
 fig.supylabel("Temperature (C)", fontsize=24)
 plt.tight_layout(pad= 5)
 
-plt.savefig("Figures_for_paper/fig3.png")
+plt.savefig("Figures_for_paper/fig5b.png", bbox_inches='tight')
 plt.show()
 # -
+for year in years:
+    params=models[year].get_params()
+
+
 # ## Niantic
 
 #Graphing params
@@ -886,29 +907,64 @@ for i, sta in enumerate(pd.unique(by_station["Station ID"])):
     plt.show()
 # -
 
-# # Ground Truth
+# # Ground Truth at JC, WP, NR
 
+
+# +
+#Dataframe for temp prediction (Code from Above)
+
+gt_for_pred={}
+
+#Making a prediction dataframe for each year in case location changes
+for year in years:
+    #Restricting to non-continuous data to see how GP fills in data
+    working=pd.read_csv("Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv", index_col=0)
+
+    #Creating year variable
+    working["Date"]=pd.to_datetime(working["Date"])
+    working["Year"]=working["Date"].dt.year
+
+    #Limiting to years of interest
+    working = working.loc[working["Year"]==year]
+    print(pd.unique(working["Year"]))
+
+    #Getting stations
+    by_station=working.drop_duplicates(subset=["Station ID"])[["Station ID", "Year", "Latitude",  "Longitude", "embay_dist"]].copy()
+
+    #Adding each day in range for every station samples
+    day_list=pd.DataFrame(gt_days, columns=["Day"])
+    gt_for_pred[year] = by_station.merge(day_list, how = "cross")
+    print(gt_for_pred[year])
+    
+# -
+
+# ## Shoot Count Trailing Mean
 
 import statsmodels.api as sm
 
-gt=pd.read_csv("Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv", index_col=0)
-gt["Date"]=pd.to_datetime(gt["Date"])
-gt["Day"]=gt["Date"].dt.day_of_year
-gt["Year"]=gt["Date"].dt.year
-gt=gt.loc[gt["Year"].isin(years)]
-gt
+# +
+#params
+gt_path="Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv"
+gt_var="Shoot Count"
 
-#Ground Truth Data Summary Statistics
-working=gt.loc[gt["Year"].isin(range(2019, 2022))]
-working=working["Day"].describe()
-pd.DataFrame(working)
-
-# # Trailing n day mean
-
+#Days for trailing mean
 n=60
 
-#Graphing param
-plt.rcParams["figure.figsize"]=(24, 8)
+#Setting threshold
+thresh=20
+
+#Setting summer as time period for ground truthing of summer mean and days oveer thresh
+gt_days=range(182, 244)
+
+# +
+gt_data=pd.read_csv(gt_path, index_col=0)
+gt_data["Date"]=pd.to_datetime(gt_data["Date"])
+gt_data["Day"]=gt_data["Date"].dt.day_of_year
+gt_data["Year"]=gt_data["Date"].dt.year
+gt_data=gt_data.loc[gt_data["Year"].isin(years)]
+gt_data.rename(columns={"Number of Vegetative Shoots":"Shoot Count"}, inplace=True)
+
+gt_data
 
 # +
 #Modelling trailing mean temperatures at ground truthing points
@@ -942,81 +998,102 @@ for year in years:
 agg.loc[(223<=agg["Day"]) & (agg["Day"]<=225)].head()
 # +
 #Getting years ground truthing (shoot count)
-working=gt.loc[gt["Year"].isin(years)].copy()
+working=gt_data.loc[gt_data["Year"].isin(years)].copy()
 errors=working.groupby(["Station ID", "Year", "Day"]).std().reset_index()
 working=working.groupby(["Station ID", "Year", "Day"]).mean().reset_index()
-working.rename(columns={"Number of Vegetative Shoots":"shoot_count"}, inplace=True)
-errors.rename(columns={"Number of Vegetative Shoots":"shoot_count"}, inplace=True)
 
 #Merging agg data with gt data
 comp=working.merge(agg, how="left", on=["Station ID", "Year", "Day"])
-print(comp)
+#print(comp)
 
 #Regression Line (gp)
-Y = comp["shoot_count"]
+Y = comp[gt_var]
 X = comp["Temperature (C)"]
 X=sm.add_constant(X)
 model=sm.OLS(Y, X)
 results_gp =model.fit()
-print(results_gp.summary())
+#print(results_gp.summary())
 p=results_gp.params
 
 #Plotting and regression (gp)
-for sta in pd.unique(gt["Station ID"]):
+for sta in pd.unique(gt_data["Station ID"]):
     working=comp.loc[comp["Station ID"]==sta]
     
-    bars=errors.loc[errors["Station ID"]==sta,"shoot_count"]
-    plt.errorbar(working["Temperature (C)"], working["shoot_count"], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    plt.errorbar(working["Temperature (C)"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
 
-    plt.scatter(working["Temperature (C)"], working["shoot_count"], s=100)
+    plt.scatter(working["Temperature (C)"], working[gt_var], s=100)
     
-    plt.title("Shoot Count vs. Gaussian Process-Predicted Temperature, 60 Day Trailing Avg", fontsize=18)
-    plt.ylabel("Shoot Count", fontsize=18)
+    plt.title(gt_var + " vs. Gaussian Process-Predicted Temperature, 60 Day Trailing Avg", fontsize=18)
+    plt.ylabel(gt_var, fontsize=18)
     plt.xlabel("Temperature (C)", fontsize=18)
 
 #Plotting gp reg line
 plt.plot(comp["Temperature (C)"], p.const + p["Temperature (C)"] * comp["Temperature (C)"], color="black")
-plt.legend(pd.unique(gt["Station ID"]))
+plt.legend(pd.unique(gt_data["Station ID"]))
 plt.show()
 
 #Regression Line (idw)
-Y = comp["shoot_count"]
+Y = comp[gt_var]
 X = comp["interpolated"]
 X=sm.add_constant(X)
 model=sm.OLS(Y, X)
 results_idw =model.fit()
-print(results_idw.summary())
+#print(results_idw.summary())
 p=results_idw.params
 
 #plotting (idw)
-for sta in pd.unique(gt["Station ID"]):
+for sta in pd.unique(gt_data["Station ID"]):
     working=comp.loc[comp["Station ID"]==sta]
     
-    bars=errors.loc[errors["Station ID"]==sta,"shoot_count"]
-    plt.errorbar(working["interpolated"], working["shoot_count"], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    plt.errorbar(working["interpolated"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
 
-    plt.scatter(working["interpolated"], working["shoot_count"], s=100)
+    plt.scatter(working["interpolated"], working[gt_var], s=100)
 
-    plt.title("Shoot Count vs. CTDEEP IDW-Predicted Temperature, " + str(n) + " Day Trailing Avg", fontsize=18)
-    plt.ylabel("Shoot Count", fontsize=18)
+    plt.title(gt_var + " vs. CTDEEP IDW-Predicted Temperature, " + str(n) + " Day Trailing Avg", fontsize=18)
+    plt.ylabel(gt_var, fontsize=18)
     plt.xlabel("Temperature (C)", fontsize=18)
 
 #Plotting idw reg line
 plt.plot(comp["interpolated"], p.const + p["interpolated"] * comp["interpolated"], color="black")
-plt.legend(pd.unique(gt["Station ID"]))
+plt.legend(pd.unique(gt_data["Station ID"]))
 plt.show()
 # -
 
-# ## Shoot Count w/ Mean Temeprature and Days Over Threshold
+# ## Shoot Count Regs Summer Avg + Threshold
 
-#Setting threshold
-thresh=20
+import statsmodels.api as sm
 
 #Graphing param
 plt.rcParams["figure.figsize"]=(30, 20)
 
 # +
-#Modelling summer average temperatures at ground truthing points
+#params
+gt_path="Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv"
+gt_var="Shoot Count"
+
+#Days for trailing mean
+n=60
+
+#Setting threshold
+thresh=20
+
+#Setting summer as time period for ground truthing of summer mean and days oveer thresh
+gt_days=range(182, 244)
+
+# +
+gt_data=pd.read_csv(gt_path, index_col=0)
+gt_data["Date"]=pd.to_datetime(gt_data["Date"])
+gt_data["Day"]=gt_data["Date"].dt.day_of_year
+gt_data["Year"]=gt_data["Date"].dt.year
+gt_data=gt_data.loc[gt_data["Year"].isin(years)]
+gt_data.rename(columns={"Number of Vegetative Shoots":"Shoot Count"}, inplace=True)
+
+gt_data
+
+# +
+#Predicting Temp for all days in gt_for_pred
 agg=pd.DataFrame()
 for year in years:
 
@@ -1042,14 +1119,13 @@ for year in years:
 agg =interpolate_means(agg)
 agg.loc[(223<=agg["Day"]) & (agg["Day"]<=225)].head()
 # +
-#Getting years ground truthing (shoot count)
+#Getting years ground truthing for defined variable above
 
 fig, ax = plt.subplots(2, 2)
 
 ##SUMMER MEAN
 
-working=gt.loc[gt["Year"].isin(years)].copy()
-working.rename(columns={"Number of Vegetative Shoots":"shoot_count"}, inplace=True)
+working=gt_data.loc[gt_data["Year"].isin(years)].copy()
 
 #Aggregating interpolated ground truth data to get summer average and merging it with gt data
 temp=agg.groupby(["Station ID", "Year"]).mean().reset_index()
@@ -1058,7 +1134,7 @@ errors=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Stat
 
 print("Gaussian Process Summer Avg Regression Results:")
 #Regression Line (gp)
-Y = comp["shoot_count"]
+Y = comp[gt_var]
 X = comp["Temperature (C)"]
 X=sm.add_constant(X)
 model=sm.OLS(Y, X)
@@ -1067,25 +1143,25 @@ print(results_gp.summary())
 p=results_gp.params
 
 #Plotting and regression (gp)
-for sta in pd.unique(gt["Station ID"]):
+for sta in pd.unique(gt_data["Station ID"]):
     working=comp.loc[comp["Station ID"]==sta]
     
-    bars=errors.loc[errors["Station ID"]==sta,"shoot_count"]
-    ax[0, 0].errorbar(working["Temperature (C)"], working["shoot_count"], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[0, 0].errorbar(working["Temperature (C)"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
 
-    ax[0, 0].scatter(working["Temperature (C)"], working["shoot_count"], s=100)
+    ax[0, 0].scatter(working["Temperature (C)"], working[gt_var], s=100)
     
-    ax[0, 0].set_title("Shoot Count vs. Gaussian Process-Predicted Temperature (Summer Avg)", fontsize=18)
-    ax[0, 0].set_ylabel("Shoot Count", fontsize=18)
+    ax[0, 0].set_title(gt_var +  " vs. Gaussian Process-Predicted Temperature (Summer Avg)", fontsize=18)
+    ax[0, 0].set_ylabel(gt_var, fontsize=18)
     ax[0, 0].set_xlabel("Temperature (C)", fontsize=18)
 
 #Plotting gp reg line
 ax[0, 0].plot(comp["Temperature (C)"], p.const + p["Temperature (C)"] * comp["Temperature (C)"], color="black")
-fig.legend(pd.unique(gt["Station ID"]), prop={'size': 25}, bbox_to_anchor=[1.05, 1.05])
+fig.legend(pd.unique(gt_data["Station ID"]), prop={'size': 25}, bbox_to_anchor=[1.1, 1.05])
 
 print("IDW Summer Avg Regression Results:")
 #Regression Line (idw)
-Y = comp["shoot_count"]
+Y = comp[gt_var]
 X = comp["interpolated"]
 X=sm.add_constant(X)
 model=sm.OLS(Y, X)
@@ -1094,16 +1170,16 @@ print(results_idw.summary())
 p=results_idw.params
 
 #plotting (idw)
-for sta in pd.unique(gt["Station ID"]):
+for sta in pd.unique(gt_data["Station ID"]):
     working=comp.loc[comp["Station ID"]==sta]
     
-    bars=errors.loc[errors["Station ID"]==sta,"shoot_count"]
-    ax[0, 1].errorbar(working["interpolated"], working["shoot_count"], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[0, 1].errorbar(working["interpolated"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
 
-    ax[0, 1].scatter(working["interpolated"], working["shoot_count"], s=100)
+    ax[0, 1].scatter(working["interpolated"], working[gt_var], s=100)
 
-    ax[0, 1].set_title("Shoot Count vs. CTDEEP IDW-Predicted Temperature (Summer Avg)", fontsize=18)
-    ax[0, 1].set_ylabel("Shoot Count", fontsize=18)
+    ax[0, 1].set_title(gt_var + " vs. CTDEEP IDW-Predicted Temperature (Summer Avg)", fontsize=18)
+    ax[0, 1].set_ylabel(gt_var, fontsize=18)
     ax[0, 1].set_xlabel("Temperature (C)", fontsize=18)
 
 #Plotting idw reg line
@@ -1127,8 +1203,7 @@ to_merge = pd.DataFrame(working.groupby(["Station ID", "Year"])[["thresh_gp", "t
 to_merge.reset_index(inplace=True)
 #print(to_merge)
 
-working=gt.loc[gt["Year"].isin(years)].copy()
-working.rename(columns={"Number of Vegetative Shoots":"shoot_count"}, inplace=True)
+working=gt_data.loc[gt_data["Year"].isin(years)].copy()
 
 #Re-merging gt from above with days over threshold
 comp=working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
@@ -1140,7 +1215,7 @@ print(comp.tail())
 
 print("IDW Days Over Threshold Results:")
 #Regression Line (gp)
-Y = comp["shoot_count"]
+Y = comp[gt_var]
 X = comp["thresh_gp"]
 X=sm.add_constant(X)
 model=sm.OLS(Y, X)
@@ -1150,25 +1225,25 @@ p=results_gp.params
 
 #Plotting gp threshold estimates by year to visualize
 #Plotting and regression (gp)
-for sta in pd.unique(gt["Station ID"]):
+for sta in pd.unique(gt_data["Station ID"]):
     #data
     working=comp.loc[comp["Station ID"]==sta]
 
     #erors
-    bars=errors.loc[errors["Station ID"]==sta,"shoot_count"]
-    ax[1, 0].errorbar(working["thresh_gp"], working["shoot_count"], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[1, 0].errorbar(working["thresh_gp"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
 
     #plot data
-    ax[1, 0].scatter(working["thresh_gp"], working["shoot_count"], s=100)
+    ax[1, 0].scatter(working["thresh_gp"], working[gt_var], s=100)
 
 ax[1, 0].plot(comp["thresh_gp"], p.const + p["thresh_gp"] * comp["thresh_gp"], color="black")
-ax[1, 0].set_title("Shoot Count vs. GP Predicted Days Over "  + str(thresh) + " Threhsold", fontsize=18)
-ax[1, 0].set_ylabel("Shoot Count", fontsize=18)
+ax[1, 0].set_title(gt_var + " vs. GP Predicted Days Over "  + str(thresh) + " Threhsold", fontsize=18)
+ax[1, 0].set_ylabel(gt_var, fontsize=18)
 ax[1, 0].set_xlabel("Days Above Threshold for the Year", fontsize=18)
 
 print("IDW Days Over Threshold Results:")
 #Regression Line (idw)
-Y = comp["shoot_count"]
+Y = comp[gt_var]
 X = comp["thresh_idw"]
 X=sm.add_constant(X)
 model=sm.OLS(Y, X)
@@ -1177,49 +1252,501 @@ print(results_gp.summary())
 p=results_gp.params
 
 #plotting (idw)
-for sta in pd.unique(gt["Station ID"]):
+for sta in pd.unique(gt_data["Station ID"]):
     #data
     working=comp.loc[comp["Station ID"]==sta]
     
     #errors
-    bars=errors.loc[errors["Station ID"]==sta, "shoot_count"]
-    ax[1, 1].errorbar(working["thresh_idw"], working["shoot_count"], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[1, 1].errorbar(working["thresh_idw"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
     
     #plot data
-    ax[1, 1].scatter(working["thresh_idw"], working["shoot_count"], s=100)
+    ax[1, 1].scatter(working["thresh_idw"], working[gt_var], s=100)
     
 ax[1, 1].plot(comp["thresh_idw"], p.const + p["thresh_idw"] * comp["thresh_idw"], color="black")
-ax[1, 1].set_title("Shoot Count vs. IDW Predicted Days Over " + str(thresh) + " Threhsold", fontsize=18)
-ax[1, 1].set_ylabel("Shoot Count", fontsize=18)
+ax[1, 1].set_title(gt_var +  " vs. IDW Predicted Days Over " + str(thresh) + " Threhsold", fontsize=18)
+ax[1, 1].set_ylabel(gt_var, fontsize=18)
 ax[1, 1].set_xlabel("Days Above Threshold for the Year", fontsize=18)
 fig.tight_layout()
 
 plt.show()
 # -
 
-# ## Repro Count w/ Mean Temeprature and Days Over Threshold
+# ## Shoot Count Die-Off Regs
 
+#Graphing param
+plt.rcParams["figure.figsize"]=(30, 20)
+
+import statsmodels.api as sm
+
+# +
+#params
+gt_path="Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv"
+gt_var="Aug_to_Sep"
+start_month=8
+end_month=9
+
+#Days for trailing mean
+n=60
+
+#Setting threshold
+thresh=20
+
+#Setting summer as time period for ground truthing of summer mean and days oveer thresh
+gt_days=range(182, 244)
+
+# +
+gt_data=pd.read_csv(gt_path, index_col=0)
+gt_data["Date"]=pd.to_datetime(gt_data["Date"])
+gt_data["Day"]=gt_data["Date"].dt.day_of_year
+gt_data["Year"]=gt_data["Date"].dt.year
+gt_data["Month"]=gt_data["Date"].dt.month
+
+gt_data=gt_data.loc[gt_data["Year"].isin(years)]
+gt_data.rename(columns={"Number of Vegetative Shoots":"Shoot Count"}, inplace=True)
+
+delta=gt_data.groupby(["Station ID", "Year", "Month"]).mean()["Shoot Count"].unstack(level=2)
+delta[gt_var]=delta[end_month]-delta[start_month]
+delta = pd.DataFrame(delta[gt_var].reset_index())
+print(delta)
+
+gt_data=gt_data.groupby(["Station ID", "Year"]).mean().reset_index()
+gt_data=gt_data.merge(delta, how="left", on=["Station ID", "Year"])
+gt_data
+
+# +
+#Predicting Temp for all days in gt_for_pred
+agg=pd.DataFrame()
+for year in years:
+
+## Getting temperature from GP Model
+    working=gt_for_pred[year]
+    print(pd.unique(working["Year"]))
+    
+    #Normalizing predictors
+    X_pred = working[indep_var].values
+    X_pred=X_pred - xmeans[year]
+    X_pred=X_pred / xstds[year]
+
+    #Using reindexed in prediction
+    y_pred, MSE = models[year].predict(X_pred, return_std=True)
+    y_pred+=ymeans[year]
+    #print(ymeans[year])
+
+    #Adding modeled data back into predictors
+    working["Temperature (C)"]=y_pred
+    agg=pd.concat([agg, working])
+    
+##Getting temperature from CTDEEP interpolation
+agg =interpolate_means(agg)
+agg.loc[(223<=agg["Day"]) & (agg["Day"]<=225)].head()
+# +
+#Getting years ground truthing for defined variable above
+
+fig, ax = plt.subplots(2, 2)
+
+##SUMMER MEAN
+
+working=gt_data.loc[gt_data["Year"].isin(years)].copy()
+
+#Aggregating interpolated ground truth data to get summer average and merging it with gt data
+temp=agg.groupby(["Station ID", "Year"]).mean().reset_index()
+comp=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
+errors=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).std().reset_index()
+
+print("Gaussian Process Summer Avg Regression Results:")
+#Regression Line (gp)
+Y = comp[gt_var]
+X = comp["Temperature (C)"]
+X=sm.add_constant(X)
+model=sm.OLS(Y, X)
+results_gp =model.fit()
+print(results_gp.summary())
+p=results_gp.params
+
+#Plotting and regression (gp)
+for sta in pd.unique(gt_data["Station ID"]):
+    working=comp.loc[comp["Station ID"]==sta]
+    
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[0, 0].errorbar(working["Temperature (C)"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+
+    ax[0, 0].scatter(working["Temperature (C)"], working[gt_var], s=100)
+    
+    ax[0, 0].set_title(gt_var +  " vs. Gaussian Process-Predicted Temperature (Summer Avg)", fontsize=18)
+    ax[0, 0].set_ylabel(gt_var, fontsize=18)
+    ax[0, 0].set_xlabel("Temperature (C)", fontsize=18)
+
+#Plotting gp reg line
+ax[0, 0].plot(comp["Temperature (C)"], p.const + p["Temperature (C)"] * comp["Temperature (C)"], color="black")
+fig.legend(pd.unique(gt_data["Station ID"]), prop={'size': 25}, bbox_to_anchor=[1.1, 1.05])
+
+print("IDW Summer Avg Regression Results:")
+#Regression Line (idw)
+Y = comp[gt_var]
+X = comp["interpolated"]
+X=sm.add_constant(X)
+model=sm.OLS(Y, X)
+results_idw =model.fit()
+print(results_idw.summary())
+p=results_idw.params
+
+#plotting (idw)
+for sta in pd.unique(gt_data["Station ID"]):
+    working=comp.loc[comp["Station ID"]==sta]
+    
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[0, 1].errorbar(working["interpolated"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+
+    ax[0, 1].scatter(working["interpolated"], working[gt_var], s=100)
+
+    ax[0, 1].set_title(gt_var + " vs. CTDEEP IDW-Predicted Temperature (Summer Avg)", fontsize=18)
+    ax[0, 1].set_ylabel(gt_var, fontsize=18)
+    ax[0, 1].set_xlabel("Temperature (C)", fontsize=18)
+
+#Plotting idw reg line
+ax[0, 1].plot(comp["interpolated"], p.const + p["interpolated"] * comp["interpolated"], color="black")
+
+## DAYS OVER THRESHOLD
+comp=pd.DataFrame()
+
+#Getting days over threshold using the same "agg" from summer means calculation above
+working=agg.copy()
+
+#Temperature threshold for gaussian process
+working["thresh_gp"]= working["Temperature (C)"]>thresh
+working["thresh_gp"]=working["thresh_gp"].astype(int)
+
+#Temperature threshold for CTDEEP idw data
+working["thresh_idw"]= working["interpolated"]>thresh
+working["thresh_idw"]=working["thresh_idw"].astype(int)
+
+to_merge = pd.DataFrame(working.groupby(["Station ID", "Year"])[["thresh_gp", "thresh_idw"]].sum())
+to_merge.reset_index(inplace=True)
+#print(to_merge)
+
+working=gt_data.loc[gt_data["Year"].isin(years)].copy()
+
+#Re-merging gt from above with days over threshold
+comp=working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
+errors = working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).std().reset_index()
+
+print(errors.tail())
+print("comp")
+print(comp.tail())
+
+print("IDW Days Over Threshold Results:")
+#Regression Line (gp)
+Y = comp[gt_var]
+X = comp["thresh_gp"]
+X=sm.add_constant(X)
+model=sm.OLS(Y, X)
+results_gp =model.fit()
+print(results_gp.summary())
+p=results_gp.params
+
+#Plotting gp threshold estimates by year to visualize
+#Plotting and regression (gp)
+for sta in pd.unique(gt_data["Station ID"]):
+    #data
+    working=comp.loc[comp["Station ID"]==sta]
+
+    #erors
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[1, 0].errorbar(working["thresh_gp"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+
+    #plot data
+    ax[1, 0].scatter(working["thresh_gp"], working[gt_var], s=100)
+
+ax[1, 0].plot(comp["thresh_gp"], p.const + p["thresh_gp"] * comp["thresh_gp"], color="black")
+ax[1, 0].set_title(gt_var + " vs. GP Predicted Days Over "  + str(thresh) + " Threhsold", fontsize=18)
+ax[1, 0].set_ylabel(gt_var, fontsize=18)
+ax[1, 0].set_xlabel("Days Above Threshold for the Year", fontsize=18)
+
+print("IDW Days Over Threshold Results:")
+#Regression Line (idw)
+Y = comp[gt_var]
+X = comp["thresh_idw"]
+X=sm.add_constant(X)
+model=sm.OLS(Y, X)
+results_gp =model.fit()
+print(results_gp.summary())
+p=results_gp.params
+
+#plotting (idw)
+for sta in pd.unique(gt_data["Station ID"]):
+    #data
+    working=comp.loc[comp["Station ID"]==sta]
+    
+    #errors
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[1, 1].errorbar(working["thresh_idw"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+    
+    #plot data
+    ax[1, 1].scatter(working["thresh_idw"], working[gt_var], s=100)
+    
+ax[1, 1].plot(comp["thresh_idw"], p.const + p["thresh_idw"] * comp["thresh_idw"], color="black")
+ax[1, 1].set_title(gt_var +  " vs. IDW Predicted Days Over " + str(thresh) + " Threhsold", fontsize=18)
+ax[1, 1].set_ylabel(gt_var, fontsize=18)
+ax[1, 1].set_xlabel("Days Above Threshold for the Year", fontsize=18)
+fig.tight_layout()
+
+plt.show()
+# -
+
+# ## Repro Counts Regs
+
+import statsmodels.api as sm
+
+# +
+#params
+gt_path="Data/Dominion Energy/Millstone_Repro_Counts.csv"
+gt_var="ReproCount"
+
+#Days for trailing mean
+n=60
+
+#Setting threshold
+thresh=20
+
+#Setting summer as time period for ground truthing of summer mean and days oveer thresh
+gt_days=range(182, 244)
+
+# +
+gt_data=pd.read_csv(gt_path)
+gt_data=gt_data.loc[gt_data["Year"].isin(years)]
+
+gt_data.replace({"Jordan Cove": "JC", "Niantic River": "NR", "White Point":"WP"}, inplace=True)
+gt_data.rename(columns={"Station": "Station ID"}, inplace=True)
+
+gt_data.head()
+
+# +
+#Predicting Temp for all days in gt_for_pred
+agg=pd.DataFrame()
+for year in years:
+
+## Getting temperature from GP Model
+    working=gt_for_pred[year]
+    print(pd.unique(working["Year"]))
+    
+    #Normalizing predictors
+    X_pred = working[indep_var].values
+    X_pred=X_pred - xmeans[year]
+    X_pred=X_pred / xstds[year]
+
+    #Using reindexed in prediction
+    y_pred, MSE = models[year].predict(X_pred, return_std=True)
+    y_pred+=ymeans[year]
+    #print(ymeans[year])
+
+    #Adding modeled data back into predictors
+    working["Temperature (C)"]=y_pred
+    agg=pd.concat([agg, working])
+    
+##Getting temperature from CTDEEP interpolation
+agg =interpolate_means(agg)
+agg.loc[(223<=agg["Day"]) & (agg["Day"]<=225)].head()
+# +
+#Getting years ground truthing for defined variable above
+
+fig, ax = plt.subplots(2, 2)
+
+##SUMMER MEAN
+
+working=gt_data.loc[gt_data["Year"].isin(years)].copy()
+
+#Aggregating interpolated ground truth data to get summer average and merging it with gt data
+temp=agg.groupby(["Station ID", "Year"]).mean().reset_index()
+comp=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
+errors=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).std().reset_index()
+
+print("Gaussian Process Summer Avg Regression Results:")
+#Regression Line (gp)
+Y = comp[gt_var]
+X = comp["Temperature (C)"]
+X=sm.add_constant(X)
+model=sm.OLS(Y, X)
+results_gp =model.fit()
+print(results_gp.summary())
+p=results_gp.params
+
+#Plotting and regression (gp)
+for sta in pd.unique(gt_data["Station ID"]):
+    working=comp.loc[comp["Station ID"]==sta]
+    
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[0, 0].errorbar(working["Temperature (C)"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+
+    ax[0, 0].scatter(working["Temperature (C)"], working[gt_var], s=100)
+    
+    ax[0, 0].set_title(gt_var +  " vs. Gaussian Process-Predicted Temperature (Summer Avg)", fontsize=18)
+    ax[0, 0].set_ylabel(gt_var, fontsize=18)
+    ax[0, 0].set_xlabel("Temperature (C)", fontsize=18)
+
+#Plotting gp reg line
+ax[0, 0].plot(comp["Temperature (C)"], p.const + p["Temperature (C)"] * comp["Temperature (C)"], color="black")
+fig.legend(pd.unique(gt_data["Station ID"]), prop={'size': 25}, bbox_to_anchor=[1.1, 1.05])
+
+print("IDW Summer Avg Regression Results:")
+#Regression Line (idw)
+Y = comp[gt_var]
+X = comp["interpolated"]
+X=sm.add_constant(X)
+model=sm.OLS(Y, X)
+results_idw =model.fit()
+print(results_idw.summary())
+p=results_idw.params
+
+#plotting (idw)
+for sta in pd.unique(gt_data["Station ID"]):
+    working=comp.loc[comp["Station ID"]==sta]
+    
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[0, 1].errorbar(working["interpolated"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+
+    ax[0, 1].scatter(working["interpolated"], working[gt_var], s=100)
+
+    ax[0, 1].set_title(gt_var + " vs. CTDEEP IDW-Predicted Temperature (Summer Avg)", fontsize=18)
+    ax[0, 1].set_ylabel(gt_var, fontsize=18)
+    ax[0, 1].set_xlabel("Temperature (C)", fontsize=18)
+
+#Plotting idw reg line
+ax[0, 1].plot(comp["interpolated"], p.const + p["interpolated"] * comp["interpolated"], color="black")
+
+## DAYS OVER THRESHOLD
+comp=pd.DataFrame()
+
+#Getting days over threshold using the same "agg" from summer means calculation above
+working=agg.copy()
+
+#Temperature threshold for gaussian process
+working["thresh_gp"]= working["Temperature (C)"]>thresh
+working["thresh_gp"]=working["thresh_gp"].astype(int)
+
+#Temperature threshold for CTDEEP idw data
+working["thresh_idw"]= working["interpolated"]>thresh
+working["thresh_idw"]=working["thresh_idw"].astype(int)
+
+to_merge = pd.DataFrame(working.groupby(["Station ID", "Year"])[["thresh_gp", "thresh_idw"]].sum())
+to_merge.reset_index(inplace=True)
+#print(to_merge)
+
+working=gt_data.loc[gt_data["Year"].isin(years)].copy()
+
+#Re-merging gt from above with days over threshold
+comp=working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
+errors = working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).std().reset_index()
+
+print(errors.tail())
+print("comp")
+print(comp.tail())
+
+print("IDW Days Over Threshold Results:")
+#Regression Line (gp)
+Y = comp[gt_var]
+X = comp["thresh_gp"]
+X=sm.add_constant(X)
+model=sm.OLS(Y, X)
+results_gp =model.fit()
+print(results_gp.summary())
+p=results_gp.params
+
+#Plotting gp threshold estimates by year to visualize
+#Plotting and regression (gp)
+for sta in pd.unique(gt_data["Station ID"]):
+    #data
+    working=comp.loc[comp["Station ID"]==sta]
+
+    #erors
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[1, 0].errorbar(working["thresh_gp"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+
+    #plot data
+    ax[1, 0].scatter(working["thresh_gp"], working[gt_var], s=100)
+
+ax[1, 0].plot(comp["thresh_gp"], p.const + p["thresh_gp"] * comp["thresh_gp"], color="black")
+ax[1, 0].set_title(gt_var + " vs. GP Predicted Days Over "  + str(thresh) + " Threhsold", fontsize=18)
+ax[1, 0].set_ylabel(gt_var, fontsize=18)
+ax[1, 0].set_xlabel("Days Above Threshold for the Year", fontsize=18)
+
+print("IDW Days Over Threshold Results:")
+#Regression Line (idw)
+Y = comp[gt_var]
+X = comp["thresh_idw"]
+X=sm.add_constant(X)
+model=sm.OLS(Y, X)
+results_gp =model.fit()
+print(results_gp.summary())
+p=results_gp.params
+
+#plotting (idw)
+for sta in pd.unique(gt_data["Station ID"]):
+    #data
+    working=comp.loc[comp["Station ID"]==sta]
+    
+    #errors
+    bars=errors.loc[errors["Station ID"]==sta, gt_var]
+    ax[1, 1].errorbar(working["thresh_idw"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+    
+    #plot data
+    ax[1, 1].scatter(working["thresh_idw"], working[gt_var], s=100)
+    
+ax[1, 1].plot(comp["thresh_idw"], p.const + p["thresh_idw"] * comp["thresh_idw"], color="black")
+ax[1, 1].set_title(gt_var +  " vs. IDW Predicted Days Over " + str(thresh) + " Threhsold", fontsize=18)
+ax[1, 1].set_ylabel(gt_var, fontsize=18)
+ax[1, 1].set_xlabel("Days Above Threshold for the Year", fontsize=18)
+fig.tight_layout()
+
+plt.show()
+# -
 
 # This is calculated in the same way as shoot count with the same locations only with slightly different data, so all that needs to be changed  from above is the dataframe "gt"
 
-# ## Reading in repro counts
+# # Mapping Ground Truth
 
-gt=pd.read_csv("Data/Dominion Energy/Millstone_Repro_Counts.csv")
+thresh=25
+
+#Reading in mapping data for actual merging
+gt=pd.read_csv("Data/Dominion Energy/Millstone_Eelgrass_Mapping_coastal_features.csv", index_col=0)
+gt["Date"]=pd.to_datetime(gt["Date"])
+gt["Year"]=gt["Date"].dt.year
 gt=gt.loc[gt["Year"].isin(years)]
-gt.replace({"Jordan Cove": "JC", "Niantic River": "NR", "White Point":"WP"}, inplace=True)
-gt.rename(columns={"Station": "Station ID"}, inplace=True)
+gt["coords"]=gt.apply(lambda x: (x["Latitude"], x["Longitude"]), axis=1)
 gt
 
-# ## Plotting Statistics
+# +
+#Making Prediction DataFrame for Eelgrass Mapping
 
-#Setting threshold
-thresh=20
+gt_for_pred={}
 
-#Graphing param
-plt.rcParams["figure.figsize"]=(30, 20)
+#Making a prediction dataframe for each year in case location changes
+for year in years:
+    #Restricting to non-continuous data to see how GP fills in data
+    working=pd.read_csv("Data/Dominion Energy/Millstone_Eelgrass_Mapping_coastal_features.csv", index_col=0)
+
+    #Creating year variable
+    working["Date"]=pd.to_datetime(working["Date"])
+    working["Year"]=working["Date"].dt.year
+
+    #Limiting to years of interest
+    working = working.loc[working["Year"]==year]
+    print(pd.unique(working["Year"]))
+    
+    #Dropping actual gt variable
+    working.drop("Abundance", axis=1, inplace=True)
+    
+    #Getting sampling locations
+    by_station=working.drop_duplicates(subset=["Latitude", "Longitude"]).copy()
+
+    #Adding each day in range for every station samples
+    day_list=pd.DataFrame(days, columns=["Day"])
+    gt_for_pred[year] = by_station.merge(day_list, how = "cross")
+    print(gt_for_pred[year].head())
+    print(len(gt_for_pred[year]))
 
 # +
-#Modelling summer average temperatures at ground truthing points
+#Modelling summer daily temperatures at ground truthing points
 agg=pd.DataFrame()
 for year in years:
 
@@ -1244,164 +1771,147 @@ for year in years:
 ##Getting temperature from CTDEEP interpolation
 agg =interpolate_means(agg)
 agg.loc[(223<=agg["Day"]) & (agg["Day"]<=225)].head()
-# +
-#Getting years ground truthing (shoot count)
-
-fig, ax = plt.subplots(2, 2)
-
-##SUMMER MEAN
-
-working=gt.loc[gt["Year"].isin(years)].copy()
-working.rename(columns={"ReproCount":"repro_count"}, inplace=True)
-
-#Aggregating interpolated ground truth data to get summer average and merging it with gt data
-temp=agg.groupby(["Station ID", "Year"]).mean().reset_index()
-comp=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
-errors=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).std().reset_index()
-
-print("Gaussian Process Summer Avg Regression Results:")
-#Regression Line (gp)
-Y = comp["repro_count"]
-X = comp["Temperature (C)"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_gp =model.fit()
-print(results_gp.summary())
-p=results_gp.params
-
-#Plotting and regression (gp)
-for sta in pd.unique(gt["Station ID"]):
-    working=comp.loc[comp["Station ID"]==sta]
-    
-    bars=errors.loc[errors["Station ID"]==sta,"repro_count"]
-    ax[0, 0].errorbar(working["Temperature (C)"], working["repro_count"], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-
-    ax[0, 0].scatter(working["Temperature (C)"], working["repro_count"], s=100)
-    
-    ax[0, 0].set_title("Reproductive Count vs. Gaussian Process-Predicted Temperature (Summer Avg)", fontsize=18)
-    ax[0, 0].set_ylabel("Shoot Count", fontsize=18)
-    ax[0, 0].set_xlabel("Temperature (C)", fontsize=18)
-
-#Plotting gp reg line
-ax[0, 0].plot(comp["Temperature (C)"], p.const + p["Temperature (C)"] * comp["Temperature (C)"], color="black")
-fig.legend(pd.unique(gt["Station ID"]), prop={'size': 25}, bbox_to_anchor=[1.05, 1.05])
-
-print("IDW Summer Avg Regression Results:")
-#Regression Line (idw)
-Y = comp["repro_count"]
-X = comp["interpolated"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_idw =model.fit()
-print(results_idw.summary())
-p=results_idw.params
-
-#plotting (idw)
-for sta in pd.unique(gt["Station ID"]):
-    working=comp.loc[comp["Station ID"]==sta]
-    
-    bars=errors.loc[errors["Station ID"]==sta,"repro_count"]
-    ax[0, 1].errorbar(working["interpolated"], working["repro_count"], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-
-    ax[0, 1].scatter(working["interpolated"], working["repro_count"], s=100)
-
-    ax[0, 1].set_title("Reproductive Count vs. CTDEEP IDW-Predicted Temperature (Summer Avg)", fontsize=18)
-    ax[0, 1].set_ylabel("Shoot Count", fontsize=18)
-    ax[0, 1].set_xlabel("Temperature (C)", fontsize=18)
-
-#Plotting idw reg line
-ax[0, 1].plot(comp["interpolated"], p.const + p["interpolated"] * comp["interpolated"], color="black")
-
-## DAYS OVER THRESHOLD
-comp=pd.DataFrame()
-
-#Getting days over threshold using the same "agg" from summer means calculation above
-working=agg.copy()
-
-#Temperature threshold for gaussian process
-working["thresh_gp"]= working["Temperature (C)"]>thresh
-working["thresh_gp"]=working["thresh_gp"].astype(int)
-
-#Temperature threshold for CTDEEP idw data
-working["thresh_idw"]= working["interpolated"]>thresh
-working["thresh_idw"]=working["thresh_idw"].astype(int)
-
-to_merge = pd.DataFrame(working.groupby(["Station ID", "Year"])[["thresh_gp", "thresh_idw"]].sum())
-to_merge.reset_index(inplace=True)
-#print(to_merge)
-
-working=gt.loc[gt["Year"].isin(years)].copy()
-working.rename(columns={"ReproCount":"repro_count"}, inplace=True)
-
-#Re-merging gt from above with days over threshold
-comp=working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
-errors = working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).std().reset_index()
-
-print(errors.tail())
-print("comp")
-print(comp.tail())
-
-print("IDW Days Over Threshold Results:")
-#Regression Line (gp)
-Y = comp["repro_count"]
-X = comp["thresh_gp"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_gp =model.fit()
-print(results_gp.summary())
-p=results_gp.params
-
-#Plotting gp threshold estimates by year to visualize
-#Plotting and regression (gp)
-for sta in pd.unique(gt["Station ID"]):
-    #data
-    working=comp.loc[comp["Station ID"]==sta]
-
-    #erors
-    bars=errors.loc[errors["Station ID"]==sta,"repro_count"]
-    ax[1, 0].errorbar(working["thresh_gp"], working["repro_count"], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-
-    #plot data
-    ax[1, 0].scatter(working["thresh_gp"], working["repro_count"], s=100)
-
-ax[1, 0].plot(comp["thresh_gp"], p.const + p["thresh_gp"] * comp["thresh_gp"], color="black")
-ax[1, 0].set_title("Reproductive Count vs. GP Predicted Days Over "  + str(thresh) + " Threhsold", fontsize=18)
-ax[1, 0].set_ylabel("Shoot Count", fontsize=18)
-ax[1, 0].set_xlabel("Days Above Threshold for the Year", fontsize=18)
-
-print("IDW Days Over Threshold Results:")
-#Regression Line (idw)
-Y = comp["repro_count"]
-X = comp["thresh_idw"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_gp =model.fit()
-print(results_gp.summary())
-p=results_gp.params
-
-#plotting (idw)
-for sta in pd.unique(gt["Station ID"]):
-    #data
-    working=comp.loc[comp["Station ID"]==sta]
-    
-    #errors
-    bars=errors.loc[errors["Station ID"]==sta, "repro_count"]
-    ax[1, 1].errorbar(working["thresh_idw"], working["repro_count"], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-    
-    #plot data
-    ax[1, 1].scatter(working["thresh_idw"], working["repro_count"], s=100)
-    
-ax[1, 1].plot(comp["thresh_idw"], p.const + p["thresh_idw"] * comp["thresh_idw"], color="black")
-ax[1, 1].set_title("Reproductive Count vs. IDW Predicted Days Over " + str(thresh) + " Threhsold", fontsize=18)
-ax[1, 1].set_ylabel("Shoot Count", fontsize=18)
-ax[1, 1].set_xlabel("Days Above Threshold for the Year", fontsize=18)
-fig.tight_layout()
-
-plt.show()
 # -
 
+#Making coords into a tuple so that it's hashable
+agg["coords"]=agg["coords"].apply(lambda x: tuple(x))
+agg
+
+# +
+#Getting years ground truthing in each year
 
 
+##SUMMER MEAN
+for year in years:
+    fig, ax = plt.subplots(2, 2)
 
+    working=gt.loc[gt["Year"]==year].copy()
+
+    #Aggregating interpolated ground truth data to get summer average and merging it with gt data
+    temp=agg.groupby(["coords", "Year"]).mean().reset_index()
+    comp=working.merge(temp, how="left", on=["coords", "Year"]).groupby(["coords", "Year"]).mean().reset_index()
+    errors=working.merge(temp, how="left", on=["coords", "Year"]).groupby(["coords", "Year"]).std().reset_index()
+
+    print("Gaussian Process Summer Avg Regression Results:")
+    #Regression Line (gp)
+    Y = comp["Abundance"]
+    X = comp["Temperature (C)"]
+    X=sm.add_constant(X)
+    model=sm.OLS(Y, X)
+    results_gp =model.fit()
+    print(results_gp.summary())
+    p=results_gp.params
+
+    #Plotting and regression (gp)
+    ax[0, 0].errorbar(comp["Temperature (C)"], comp["Abundance"], yerr=errors["Abundance"], fmt="none", zorder=1, color="black", capsize=10)
+
+    ax[0, 0].scatter(comp["Temperature (C)"], comp["Abundance"], s=100)
+
+    ax[0, 0].set_title("Abundance vs. Gaussian Process-Predicted Temperature (Summer Avg)", fontsize=18)
+    ax[0, 0].set_ylabel("Abundance (0-5)", fontsize=18)
+    ax[0, 0].set_xlabel("Temperature (C)", fontsize=18)
+
+    #Plotting gp reg line
+    ax[0, 0].plot(comp["Temperature (C)"], p.const + p["Temperature (C)"] * comp["Temperature (C)"], color="black")
+
+    print("IDW Summer Avg Regression Results:")
+    #Regression Line (idw)
+    Y = comp["Abundance"]
+    X = comp["interpolated"]
+    X=sm.add_constant(X)
+    model=sm.OLS(Y, X)
+    results_idw =model.fit()
+    print(results_idw.summary())
+    p=results_idw.params
+
+    #plotting (idw)
+
+    ax[0, 1].errorbar(comp["interpolated"], comp["Abundance"], yerr=errors["Abundance"], fmt="none", zorder=1, color="black", capsize=10)
+
+    ax[0, 1].scatter(comp["interpolated"], comp["Abundance"], s=100)
+
+    ax[0, 1].set_title("Abundance vs. CTDEEP IDW-Predicted Temperature (Summer Avg)", fontsize=18)
+    ax[0, 1].set_ylabel("Abundance (0-5)", fontsize=18)
+    ax[0, 1].set_xlabel("Temperature (C)", fontsize=18)
+
+    #Plotting idw reg line
+    ax[0, 1].plot(comp["interpolated"], p.const + p["interpolated"] * comp["interpolated"], color="black")
+
+    ## DAYS OVER THRESHOLD
+    comp=pd.DataFrame()
+
+    #Getting days over threshold using the same "agg" from summer means calculation above
+    working=agg.copy()
+
+    #Temperature threshold for gaussian process
+    working["thresh_gp"]= working["Temperature (C)"]>thresh
+    working["thresh_gp"]=working["thresh_gp"].astype(int)
+
+    #Temperature threshold for CTDEEP idw data
+    working["thresh_idw"]= working["interpolated"]>thresh
+    working["thresh_idw"]=working["thresh_idw"].astype(int)
+
+    to_merge = pd.DataFrame(working.groupby(["coords", "Year"])[["thresh_gp", "thresh_idw"]].sum())
+    to_merge.reset_index(inplace=True)
+    #print(to_merge)
+
+    working=gt.loc[gt["Year"]==year].copy()
+
+    #Re-merging gt from above with days over threshold
+    comp=working.merge(to_merge, how="left", on=["coords", "Year"]).groupby(["coords", "Year"]).mean().reset_index()
+    errors = working.merge(to_merge, how="left", on=["coords", "Year"]).groupby(["coords", "Year"]).std().reset_index()
+
+    print(errors.tail())
+    print("comp")
+    print(comp.tail())
+
+    print("IDW Days Over Threshold Results:")
+    #Regression Line (gp)
+    Y = comp["Abundance"]
+    X = comp["thresh_gp"]
+    X=sm.add_constant(X)
+    model=sm.OLS(Y, X)
+    results_gp =model.fit()
+    print(results_gp.summary())
+    p=results_gp.params
+
+    #Plotting gp threshold estimates by year to visualize
+    #Plotting and regression (gp)
+
+    ax[1, 0].errorbar(comp["thresh_gp"], comp["Abundance"], yerr=errors["Abundance"], fmt="none", zorder=1, color="black", capsize=10)
+
+    #plot data
+    ax[1, 0].scatter(comp["thresh_gp"], comp["Abundance"], s=100)
+
+    ax[1, 0].plot(comp["thresh_gp"], p.const + p["thresh_gp"] * comp["thresh_gp"], color="black")
+    ax[1, 0].set_title("Abundance vs. GP Predicted Days Over "  + str(thresh) + " Threhsold", fontsize=18)
+    ax[1, 0].set_ylabel("Abundance", fontsize=18)
+    ax[1, 0].set_xlabel("Days Above Threshold for the Year", fontsize=18)
+
+    print("IDW Days Over Threshold Results:")
+    #Regression Line (idw)
+    Y = comp["Abundance"]
+    X = comp["thresh_idw"]
+    X=sm.add_constant(X)
+    model=sm.OLS(Y, X)
+    results_gp =model.fit()
+    print(results_gp.summary())
+    p=results_gp.params
+
+    #plotting (idw)
+
+    ax[1, 1].errorbar(comp["thresh_idw"], comp["Abundance"], yerr=errors["Abundance"], fmt="none", zorder=1, color="black", capsize=10)
+
+    #plot data
+    ax[1, 1].scatter(comp["thresh_idw"], comp["Abundance"], s=100)
+
+    ax[1, 1].plot(comp["thresh_idw"], p.const + p["thresh_idw"] * comp["thresh_idw"], color="black")
+    ax[1, 1].set_title("Abundance vs. IDW Predicted Days Over " + str(thresh) + " Threhsold", fontsize=18)
+    ax[1, 1].set_ylabel("Abundance", fontsize=18)
+    ax[1, 1].set_xlabel("Days Above Threshold for the Year", fontsize=18)
+    fig.tight_layout()
+
+    plt.show()
+# -
 
 

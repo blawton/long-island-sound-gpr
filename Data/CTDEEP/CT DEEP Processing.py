@@ -245,9 +245,6 @@ merged.drop("Station ID", axis=1, inplace=True)
 #Saving all data to file
 #merged.to_csv("CT_DEEP_means_4_5_2023.csv")
 # -
-
-
-
 # # Making geojsons for inverse-distance-weighting (optional)
 
 # This section is optional and instead of using arcgis to inverse distance weight geojsons, the table outputted above can be put into arcgis directly, or the idw functions in this repo can be used
