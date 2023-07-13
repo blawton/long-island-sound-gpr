@@ -1,3 +1,4 @@
+#Standard imports
 import pandas as pd
 import numpy as np
 from itertools import product
@@ -13,9 +14,8 @@ import matplotlib as mpl
 import os
 import matplotlib.ticker as mtick
 
+#gdal imports
 from osgeo import gdal, gdalconst
-import numpy as np
-import matplotlib.pyplot as plt
 
 # +
 # Display params
@@ -61,11 +61,10 @@ plt.rcParams["figure.figsize"]=(30, 25)
 #Global Params:
 
 #Defining Eastern Sound Window (useful for visualizing cropped distance map)
-lon_min=-72.592354875000
-lon_max=-71.811481513000
-
-lat_min=40.970592192000
-lat_max=41.545060950000
+lon_min=-72.59
+lon_max=-71.81
+lat_min=40.97
+lat_max=41.54
 
 #Whether or note to restrict to the Eastern Sound window
 es=True
@@ -142,7 +141,7 @@ for path in paths.values():
 
 # # Reading in Data and Building in Model
 
-# ## Reading csv and building model
+# ## Reading csv
 
 # +
 #This is the source of the model's predictions
@@ -195,6 +194,51 @@ pd.unique(df["Organization"])
 #Getting list of continuous organizations for alphas (move to YAML)
 cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 
+# # Making a version of Data w/ Linear Interpolation for Model Testing
+
+#Locating outliers from below
+df.loc[df["Station ID"].isin(["CFE-STS-CTR-02",
+"CFE-STS-CTR-07", "URI-WW629"])]
+
+days=range(152, 275)
+
+# +
+#Making dataframe with proper index to put interpolation into
+df_int=df.copy()
+
+by_station=df_int.drop_duplicates(["Station ID", "Year"])[["Station ID", "Year", "Latitude", "Longitude"]]
+print(len(by_station))
+ddf=pd.DataFrame(data={"Day":days})
+
+#lengths should match up
+cross=by_station.merge(ddf, how="cross")
+print(len(cross)/len(days))
+
+reindexed=cross.merge(df_int.drop(["Latitude", "Longitude"], axis=1), how="left", on=["Station ID", "Year", "Day"])
+reindexed.loc[~reindexed["Temperature (C)"].isna()]
+
+# +
+#Interpolation
+
+#sorting data by year
+reindexed.sort_values(by=["Year", "Station ID", "Day"], inplace=True)
+
+for year in years:
+    yeardf=df_int.loc[df_int["Year"]==year]
+    yearsta=pd.unique(yeardf["Station ID"])
+    for sta in yearsta:
+        working=reindexed.loc[(reindexed["Year"]==year) & (reindexed["Station ID"]==sta), "Temperature (C)"]
+        working=working.interpolate(method="linear", limit_direction="both")
+        reindexed.loc[(reindexed["Year"]==year) & (reindexed["Station ID"]==sta), "Temperature (C)"]=working
+        
+reindexed.dropna(subset=["Temperature (C)"], axis=0, inplace=True)
+df_int=reindexed
+df_int
+
+
+# -
+
+# # Building Model
 
 #Building Model (adapted to dashboard from "Geostatistics_Workbook_version_2.1.2.ipynb")
 def build_model(predictors, year, kernel, alpha):
@@ -230,44 +274,6 @@ def build_model(predictors, year, kernel, alpha):
 
     return(gaussian_process, y_mean, x_mean, x_std)
 
-# # Making a version of Data w/ Linear Interpolation for Model Testing
-
-days=range(152, 275)
-
-# +
-#Making dataframe with proper index to put interpolation into
-df_int=df.copy()
-
-by_station=df_int.drop_duplicates(["Station ID", "Year"])[["Station ID", "Year"]]
-print(len(by_station))
-ddf=pd.DataFrame(data={"Day":days})
-
-#lengths should match up
-cross=by_station.merge(ddf, how="cross")
-print(len(cross)/len(days))
-
-reindexed=cross.merge(df_int, how="left", on=["Station ID", "Year", "Day"])
-reindexed.loc[~reindexed["Temperature (C)"].isna()]
-
-# +
-#Interpolation
-
-#sorting data by year
-reindexed.sort_values(by=["Year", "Station ID", "Day"], inplace=True)
-
-for year in years:
-    yeardf=df_int.loc[df_int["Year"]==year]
-    yearsta=pd.unique(yeardf["Station ID"])
-    for sta in yearsta:
-        working=reindexed.loc[(reindexed["Year"]==year) & (reindexed["Station ID"]==sta), "Temperature (C)"]
-        working=working.interpolate(method="linear", limit_direction="both")
-        reindexed.loc[(reindexed["Year"]==year) & (reindexed["Station ID"]==sta), "Temperature (C)"]=working
-        
-reindexed.dropna(subset=["Temperature (C)"], axis=0, inplace=True)
-df_int=reindexed
-df_int
-# -
-
 # # Parameters and Training Process
 
 #Graphing param
@@ -285,7 +291,7 @@ thresholds = [20, 25]
 temp_limits = (19, 27)
 day_limits = (0, 50)
 #Make sure this matches linear interpolation above
-days=range(152, 275)
+days=range(162, 269)
 #continuous monitoring "orgs"
 cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 
@@ -315,7 +321,7 @@ xstds = {}
 if es:
     for year in years:
         #Getting models and ymeans outputted
-        models[year], ymeans[year], xmeans[year], xstds[year] = build_model(predictors, year, kernels_liss[year], alpha)
+        models[year], ymeans[year], xmeans[year], xstds[year] = build_model(predictors, year, kernels_es[year], alpha)
         #print(models[year].kernel_)
 else:
 #Entire LISS model
@@ -345,23 +351,39 @@ def interpolate_means(daily_data):
     return(output)
 
 
-# # CTDEEP IDW RMSE
+# # CTDEEP IDW Bias and RMSE
 
 idw_test=whole_sound.loc[whole_sound["Year"].isin(years)]
 
 concat = interpolate_means(idw_test)
 concat.loc[concat["Day"].isin(range(210, 213))]
 
+# +
 #Limiting to days in July/August for comparability
 rmse_range=range(182, 244)
+
+#RMSE and bias
 concat=concat.loc[concat["Day"].isin(rmse_range)].copy()
-concat["Error"]=concat["interpolated"]-concat["Temperature (C)"]
-concat["Squared Error"]=np.square(concat["Error"])
+concat["Bias"]=concat["interpolated"]-concat["Temperature (C)"]
+concat["Squared Error"]=np.square(concat["Bias"])
 mean_error=concat.groupby("Year").mean()["Squared Error"]
 mean_error=np.sqrt(mean_error)
 mean_error=pd.DataFrame(mean_error)
 mean_error.rename(columns={"Squared Error":"Root Mean Squared Error"}, inplace=True)
+mean_error=pd.concat([mean_error, pd.DataFrame({"Root Mean Squared Error": mean_error.mean()})])
+mean_error.rename(index={"Root Mean Squared Error": "Intertemporal Mean"}, inplace=True)
+mean_error.index.name="Year"
 mean_error
+
+# +
+#Saving bias to csv
+bias=concat.groupby(["Station ID", "Year"]).mean()
+print(len(bias))
+concat.to_csv("Results/CT_DEEP_Interpolation_Bias.csv")
+print(bias.head())
+#mean_error
+
+bias.groupby(["Year"]).mean()
 
 # +
 #Generating CTDEEP interpolated time series for each station within each year
@@ -394,14 +416,35 @@ for year in years:
 # # Plots of distributions
 
 #Graphing param
-plt.rcParams["figure.figsize"]=(15, 10)
+plt.rcParams["figure.figsize"]=(30, 15)
 
 # +
 #Summer Averages histogram
 
+fig, ax=plt.subplots(3, 3)
 for i, year in enumerate(years):
     
-    fig, ax=plt.subplots(3, 1)
+#Plotting from underlying (linearly interpolated) data
+    
+    #Averaging year's data by station WITHIN AREA DEFINED ABOVE
+    working = df_int.loc[(df_int["Year"]==year)].copy()
+    
+    #Optional restriction to see if the continuous stations have a distribution that aligns better (Make Sure it Matches Above)
+    #working.loc[working["Organization"].isin(cont_orgs)]
+    
+    #This can be commented out to see histogram of all datapoints (Make Sure it Matches Above)
+    working = working.groupby("Station ID").mean()
+
+    #print(working.head())
+    weights=np.ones_like(working["Temperature (C)"])/len(working)
+    ax[0, i].hist(working["Temperature (C)"], weights=weights, edgecolor="black", color="tab:orange", bins=np.arange(temp_limits[0], temp_limits[1], .2))
+    ax[0, i].set_xlim(temp_limits)
+   #print(np.std(working["Temperature (C)"]))
+    
+    ax[0, i].set_title("Summer Average Temperature Distribution (Data), " + str(year), fontsize=18)
+    ax[0, i].set_ylabel("Prob", fontsize=18)
+    ax[0, i].set_xlabel("Temperature (C)", fontsize=18)
+    ax[0, i].tick_params(labelsize=18)
 
 #Plotting from model
 
@@ -446,17 +489,16 @@ for i, year in enumerate(years):
     #print(reindexed)
     
     weights=np.ones_like(reindexed["Temperature (C)"])/len(reindexed)
-    ax[0].hist(reindexed["Temperature (C)"], weights=weights, edgecolor="black", color="tab:blue", bins=np.arange(temp_limits[0], temp_limits[1], .2))
-    ax[0].set_xlim(temp_limits)
-    
-    if es:
-        ax[0].set_title("ES Summer Average Model Temperature Distribution, " + str(year), fontsize=18)
-    else:
-        ax[0].set_title("LISS Summer Average Model Temperature Distribution, " + str(year), fontsize=18)
+    ax[1, i].hist(reindexed["Temperature (C)"], weights=weights, edgecolor="black", color="tab:blue", bins=np.arange(temp_limits[0], temp_limits[1], .2))
+    ax[1, i].set_xlim(temp_limits)
+    ax[1, i].set_title("Summer Average Temperature Distribution (Approach II), " + str(year), fontsize=18)
 
-    ax[0].set_ylabel("Frequency")
-    ax[0].set_xlabel("Temperature (C)")
-    print(np.std(reindexed["Temperature (C)"]))
+
+    ax[1, i].set_ylabel("Prob", fontsize=18)
+    ax[1, i].set_xlabel("Temperature (C)", fontsize=18)
+    ax[1, i].tick_params(labelsize=18)
+
+    #print(np.std(reindexed["Temperature (C)"]))
 
 #Plotting CTDEEP interpolated
 
@@ -464,156 +506,44 @@ for i, year in enumerate(years):
     working =working.groupby("Station ID").mean()
     
     weights=np.ones_like(working["interpolated"])/len(reindexed)
-    ax[1].hist(working["interpolated"], weights=weights, edgecolor="black", color="tab:blue", bins=np.arange(temp_limits[0], temp_limits[1], .2))
-    ax[1].set_xlim(temp_limits)
+    ax[2, i].hist(working["interpolated"], weights=weights, edgecolor="black", color="tab:blue", bins=np.arange(temp_limits[0], temp_limits[1], .2))
+    ax[2, i].set_xlim(temp_limits)
     
-    if es:
-        ax[1].set_title("ES Summer Average CTDEEP Interpolated Temperature Distribution, " + str(year), fontsize=18)
-    else:
-        ax[1].set_title("LISS Summer Average CTDEEP Interpolated Temperature Distribution, " + str(year), fontsize=18)
+    ax[2, i].set_title("Summer Average Temperature Distribution (Approach I), " + str(year), fontsize=18)
+    ax[2, i].set_ylabel("Prob", fontsize=18)
+    ax[2, i].set_xlabel("Temperature (C)", fontsize=18)
+    ax[2, i].tick_params(labelsize=18)    
 
-    ax[1].set_ylabel("Frequency")
-    ax[1].set_xlabel("Temperature (C)")
-    
-#Plotting from underlying (linearly interpolated) data
-    
-    #Averaging year's data by station WITHIN AREA DEFINED ABOVE
-    working = df_int.loc[(df_int["Year"]==year)].copy()
-    
-    #Optional restriction to see if the continuous stations have a distribution that aligns better (Make Sure it Matches Above)
-    #working.loc[working["Organization"].isin(cont_orgs)]
-    
-    #This can be commented out to see histogram of all datapoints (Make Sure it Matches Above)
-    working = working.groupby("Station ID").mean()
+fig.tight_layout()
 
-    #print(working.head())
-    weights=np.ones_like(working["Temperature (C)"])/len(working)
-    ax[2].hist(working["Temperature (C)"], weights=weights, edgecolor="black", color="tab:orange", bins=np.arange(temp_limits[0], temp_limits[1], .2))
-    ax[2].set_xlim(temp_limits)
-    print(np.std(working["Temperature (C)"]))
+if es:
+    plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Summer_Average_Distributions.png")
+    plt.savefig("Figures_for_paper/fig9.png")
     
-    if es:
-        ax[2].set_title("ES Summer Average Data Temperature Distribution, " + str(year), fontsize=18)
-    else:
-        ax[2].set_title("LISS Summer Average Data Temperature Distribution, " + str(year), fontsize=18)
-    
-    ax[2].set_ylabel("Frequency")
-    ax[2].set_xlabel("Temperature (C)")
-    if es:
-        plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES2_Summer_Average_Distributions_" + str(year) + ".png")
-        plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/Eastern_Sound/ES2_Summer_Average_Distributions_" + str(year) + ".png")
-    else:
-        plt.savefig("Graphs/June_Graphs/LISS_Overall/LISS_Summer_Average_Distributions_" + str(year) + ".png")
-        plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/LISS_Overall/LISS_Summer_Average_Distributions_" + str(year) + ".png")
-    
-    fig.tight_layout()
-    plt.show()
+plt.show()
+# -
 
-# +
-#Summer Averages box and whisker
-
-plt.rcParams["figure.figsize"]=(15, 10)
-
-for i, year in enumerate(years):
-    lines=[]
-    fig, ax = plt.subplots()
-    
-#Plotting from model
-    
-    #Getting year's data by station in range defined earlier in notebook
-    working = df.loc[(df["Year"]==year)].copy()
-    
-    #Optional restriction to see if the continuous stations have a distribution that aligns better (make sure it matches below)
-    #working=working.loc[working["Organization"].isin(cont_orgs)]
-
-    by_station=working.drop_duplicates(subset=["Station ID"]).copy()
-    by_station.drop("Day", axis=1, inplace=True)
-    stations=pd.DataFrame(working.drop_duplicates(subset=["Station ID"])["Station ID"])
-    #print(stations)
-    day_list=pd.DataFrame(days, columns=["Day"])
-    #print(day_list)
-    cross = stations.merge(day_list, how = "cross")
-    #print(cross)
-    cross = cross.merge(by_station, how="left", on="Station ID")
-    reindexed=cross[indep_var].copy()
-    #print(reindexed.head)
-    
-    #Normalizing predictors
-    X_pred = reindexed.values
-    X_pred=X_pred - xmeans[year]
-    X_pred=X_pred / xstds[year]
-    
-    #Using reindexed in prediction
-    y_pred, MSE = models[year].predict(X_pred, return_std=True)
-    y_pred+=ymeans[year]
-    #print(ymeans[year])
-    
-    #Adding modeled data back into predictors
-    reindexed["Temperature (C)"]=y_pred
-    #print(reindexed)
-    
-    #Adding back in station ID
-    reindexed["Station ID"]=cross["Station ID"]
-    #print(reindexed)
-    
-    #This can be commented out to see histogram of all datapoints (Make Sure it Matches Below)
-    reindexed=reindexed.groupby("Station ID").mean()
-    #print(reindexed)
-    
-    #Adding to list to plot
-    lines.append(reindexed["Temperature (C)"])
-    
-#Plotting CTDEEP interpolated
-
-    lines.append(ct_deep_int[year].groupby("Station ID")["interpolated"].mean())
-
-#Plotting from underlying (linearly interpolated) data
-        
-    #Getting year's data in range defined earlier in notebook
-    working = df_int.loc[(df_int["Year"]==year)].copy()
-    
-    #Optional restriction to see if the continuous stations have a distribution that aligns better (Make Sure it Matches Above)
-    #working.loc[working["Organization"].isin(cont_orgs)]
-    
-    #This can be commented out to see histogram of all datapoints (Make Sure it Matches Above)
-    working = working.groupby("Station ID").mean()
-
-    #print(working.head())
-    
-    #Adding data to list to plot
-    lines.append(working["Temperature (C)"])
-    
-    #Plotting
-    plt.boxplot(lines, vert=0)
-    plt.xlim(temp_limits)
-    if es:
-        plt.title("ES Summer Average Model vs. Data Temperature Distribution, " + str(year), fontsize=24)
-    else:
-        plt.title("LISS Summer Average Model vs. Data Temperature Distribution, " + str(year), fontsize=24)
-    ax.set_yticklabels(["GPR Model at Sample Locations", "CT DEEP idw Model", "Data at Sample Locations"])
-    ax.set_ylabel("Group")
-    ax.set_xlabel("Degrees (C)")
-    if es:
-        plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES2_Summer_Average_BandW_" + str(year) + ".png")
-        plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/Eastern_Sound/ES2_Summer_Average_BandW_" + str(year) + ".png")
-    else:
-        plt.savefig("Graphs/June_Graphs/LISS_Overall/LISS_Summer_Average_BandW_" + str(year) + ".png")
-        plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/LISS_Overall/LISS_Summer_Average_BandW_" + str(year) + ".png")
-    plt.show()
+plt.rcParams["figure.figsize"]=(45, 20)
 
 # +
 #Days over Chosen Threshold(s) box and whisker
-plt.rcParams["figure.figsize"]=(30, 30)
 
 #csv for all data
 all_data=dict(zip(years, [pd.DataFrame() for i in range(len(years))]))
 
 #Plotting from Model
-hfig, hax =plt.subplots(len(years), len(thresholds), squeeze=True)
+hfig, hax =plt.subplots(len(thresholds), len(years), squeeze=True)
 
-for i, year in enumerate(years):
-    for j, thresh in enumerate(thresholds):
-    
+for j, year in enumerate(years):
+    for i, thresh in enumerate(thresholds):
+
+#Plotting from CTDEEP data
+
+        ct_deep_thresh=ct_deep_int[year].copy()
+        ct_deep_thresh["Threshold"] = ct_deep_thresh["interpolated"]>thresh
+        ct_deep_thresh["Threshold"]=ct_deep_thresh["Threshold"].astype(int)
+        ct_deep_thresh = ct_deep_thresh.groupby("Station ID")["Threshold"].sum()*100/ct_deep_thresh.groupby("Station ID")["Threshold"].count()
+        
     #Plotting from Model
     
         #Retrieving data WITHIN AREA DEFINED ABOVE and creating reindexed dataframe with every day present to feed into model
@@ -655,14 +585,7 @@ for i, year in enumerate(years):
         reindexed["Threshold"]= reindexed["Temperature (C)"]>thresh
         reindexed["Threshold"]=reindexed["Threshold"].astype(int)
         reindexed = reindexed.groupby("Station ID")["Threshold"].sum()*100/reindexed.groupby("Station ID")["Threshold"].count()
-        
-#Plotting from CTDEEP data
 
-        ct_deep_thresh=ct_deep_int[year].copy()
-        ct_deep_thresh["Threshold"] = ct_deep_thresh["interpolated"]>thresh
-        ct_deep_thresh["Threshold"]=ct_deep_thresh["Threshold"].astype(int)
-        ct_deep_thresh = ct_deep_thresh.groupby("Station ID")["Threshold"].sum()*100/ct_deep_thresh.groupby("Station ID")["Threshold"].count()
-        
 #Plotting from Underlying Lin. Interpolated Data
 
         #Getting year's data by station in range defined earlier in notebook
@@ -674,28 +597,27 @@ for i, year in enumerate(years):
         working["Threshold"]= working["Temperature (C)"]>thresh
         working["Threshold"]=working["Threshold"].astype(int)
         working = working.groupby("Station ID")["Threshold"].sum()*100/working.groupby("Station ID")["Threshold"].count()
-        #print(working.head())
         
-        hax[i, j].boxplot([reindexed, ct_deep_thresh, working], vert=0)
-        hax[i, j].set_yticklabels(["GP Model", "CT DEEP IDW Model", "Data"])
-        hax[i, j].set_xlabel("Days")
-        hax[i, j].set_title("Pct Days over " + str(thresh) + " deg (C) Models vs. Data, " + str(year), fontsize=18)
+        #Printing outliers
+        #print(working.loc[working>70])
+        
+        hax[i, j].boxplot([ct_deep_thresh, reindexed, working], vert=0)
+        hax[i, j].set_yticklabels([ "IDW Model (Approach I)", "GP Model (Approach II)", "Data"], fontsize=22)
+        hax[i, j].set_xlabel("% of Days", fontsize=22)
+        hax[i, j].set_title("Pct Days over " + str(thresh) + " deg (C) Models vs. Data, " + str(year), fontsize=28)
         hax[i, j].xaxis.set_major_formatter(mtick.PercentFormatter())
-
+        hax[i, j].tick_params(axis="both", which="major", labelsize=22)
+        plt.tight_layout(pad=10)
+        
 #Exporting csv of Results for analysis:
         all_data[year][str(thresh) + " (C)"]=working
         all_data[year]["Year"]=year
         
 agg_data=pd.concat(all_data)
 
-fig.suptitle("Eastern Sound", fontsize=18)
 if es:
-    plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES2_Pct_Days_over_Thresholds_BandW.png")
-    plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/Eastern_Sound/ES2_Pct_Days_over_Thresholds_BandW.png")
-
-else:
-    plt.savefig("Graphs/June_Graphs/LISS_Overall/LISS_Pct_Days_over_Thresholds_BandW.png")
-    plt.savefig("../Data Visualization and Analytics Scripts/Graphs/June_Graphs/Eastern_Sound/LISS_Pct_Days_over_Thresholds_BandW.png")
+    plt.savefig("Graphs/June_Graphs/Eastern_Sound/ES_Pct_Days_over_Thresholds_BandW.png")
+    plt.savefig("Figures_for_paper/fig10.png")
 plt.show()
 
 # -
@@ -777,18 +699,18 @@ for j, year in enumerate(years):
         
 #Formatting
         ax[i, j].set_title(sta + " " + str(year), fontsize=24)
-        ax[i, j].set_ylim([15, 27])
+        ax[i, j].set_ylim([15, 30])
         ax[i, j].set_xlim([min(days), max(days)])
         ax[i, j].tick_params(axis="x", labelsize=22)
         ax[i, j].tick_params(axis="y", labelsize=22)
         fig.legend(["Gaussian Process", "Inverse Distance Weighting", "Discrete Datapoints"],  prop={'size': 25}, bbox_to_anchor=[1.15, 1.05])
         
-fig.suptitle("Fig 5b: Synthesizing Continuous Time Series from Discrete Datapoints (Soundwide Hyperparameters)", fontsize=32)
+fig.suptitle("Fig 6a: Synthesizing Continuous Time Series from Discrete Datapoints (Eastern Sound Hyperparameters)", fontsize=32)
 fig.supxlabel("Day of the Year", fontsize=24)
 fig.supylabel("Temperature (C)", fontsize=24)
 plt.tight_layout(pad= 5)
 
-plt.savefig("Figures_for_paper/fig5b.png", bbox_inches='tight')
+plt.savefig("Figures_for_paper/fig6a.png", bbox_inches='tight')
 plt.show()
 # -
 for year in years:
@@ -829,7 +751,7 @@ for year in years:
     #Adding each day in range for every station samples
     day_list=pd.DataFrame(days, columns=["Day"])
     gt_for_pred[year] = by_station.merge(day_list, how = "cross")
-    #print(cross)
+    #print(gt_for_pred[year])
     
 # -
 
@@ -840,7 +762,6 @@ keys=dict(zip(range(len(by_station)), "abc"))
 #Plots
 
 for i, sta in enumerate(pd.unique(by_station["Station ID"])):
-    
     #Each ground truthed station gets its own plot
     fig, ax=plt.subplots(len(years))
 
@@ -849,7 +770,8 @@ for i, sta in enumerate(pd.unique(by_station["Station ID"])):
 #Generating GP time series for each ground truthing station in Millstone Environmental Lab dataset
 
         #Merging other variables with station and days
-        reindexed=gt_for_pred[year][indep_var].copy()
+        station_data=gt_for_pred[year].loc[gt_for_pred[year]["Station ID"]==sta]
+        reindexed=station_data[indep_var].copy()
         #print(reindexed)
         
         #Normalizing predictors
@@ -868,12 +790,21 @@ for i, sta in enumerate(pd.unique(by_station["Station ID"])):
         #print(reindexed)
 
         #Adding back in station ID
-        reindexed["Station ID"]=gt_for_pred[year]["Station ID"]
+        reindexed["Station ID"]=sta
         #print(reindexed)
 
 #Plotting time series within each year
-        working=reindexed.loc[reindexed["Station ID"]==sta]
-        ax[j].plot(working["Day"], working["Temperature (C)"])
+        ax[j].plot(reindexed["Day"], 
+                   reindexed["Temperature (C)"], label=sta + " Gaussian Process")
+    
+#Plotting 95% confidence interval
+        ax[j].fill_between(reindexed["Day"], 
+                           reindexed["Temperature (C)"]-1.96*MSE, 
+                           reindexed["Temperature (C)"]+1.96*MSE, 
+                           alpha=.25, 
+                           label=r" GP 95% confidence interval")
+
+
         ax[j].set_title("Millstone Station " + sta + ", " + str(year) + " w/ Controls", fontsize=24)
         
 #Plotting ct_deep_idw temp
@@ -881,16 +812,17 @@ for i, sta in enumerate(pd.unique(by_station["Station ID"])):
         working["Year"]=year
         working=interpolate_means(working)
         working=working.loc[working["Station ID"]==sta]
-        ax[j].plot(working["Day"], working["interpolated"])
+        ax[j].plot(working["Day"], working["interpolated"], label = sta + " CTDEEP IDW")
     
 
         for k, control in enumerate(controls):
 #Plotting niantic_controls for comparison
             data = df.loc[(df["Year"]==year) & (df["Station ID"]==control)].copy()
-            ax[j].plot(data["Day"], data["Temperature (C)"])
+            ax[j].plot(data["Day"], data["Temperature (C)"], label=control)
         
 #Adding legend to jth chart
-        ax[j].legend([sta + " GP", sta + " CTDEEP IDW"]+list(controls), fontsize=22)
+        ax[j].legend(bbox_to_anchor=[1.1, 1.05], fontsize=22)
+    
 #Formatting all axes
         for axis in fig.get_axes():
             axis.set_ylim([15, 27])
@@ -938,33 +870,44 @@ for year in years:
     
 # -
 
-# ## Shoot Count Trailing Mean
+# ## Shoot Count (Trailing Mean)
 
 import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import scipy.stats as stats
 
 # +
 #params
 gt_path="Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv"
-gt_var="Shoot Count"
+gt_var="shootcount_demeaned"
 
 #Days for trailing mean
-n=60
+periods=[30, 60, 90]
 
-#Setting threshold
-thresh=20
-
-#Setting summer as time period for ground truthing of summer mean and days oveer thresh
-gt_days=range(182, 244)
+#Setting summer as time period for ground truthing of summer mean and days over thresh
+gt_days=range(162, 269)
 
 # +
 gt_data=pd.read_csv(gt_path, index_col=0)
 gt_data["Date"]=pd.to_datetime(gt_data["Date"])
 gt_data["Day"]=gt_data["Date"].dt.day_of_year
 gt_data["Year"]=gt_data["Date"].dt.year
+gt_data["Month"]=gt_data["Date"].dt.month
 gt_data=gt_data.loc[gt_data["Year"].isin(years)]
-gt_data.rename(columns={"Number of Vegetative Shoots":"Shoot Count"}, inplace=True)
+gt_data.rename(columns={"Number of Vegetative Shoots":"ShootCount"}, inplace=True)
 
 gt_data
+# -
+
+#Demeaning at each sampling time 
+grouped=gt_data.groupby(["Year", "Month"]).mean()["ShootCount"].reset_index()
+grouped.rename(columns={"ShootCount": "Cross_Sectional_Mean"}, inplace=True)
+gt_data=gt_data.merge(grouped, how="left", on=["Year", "Month"])
+gt_data["shootcount_demeaned"]=gt_data["ShootCount"]-gt_data["Cross_Sectional_Mean"]
+gt_data
+
+#Range of ground truthing data for setting "days" param above
+gt_data["Day"].describe()
 
 # +
 #Modelling trailing mean temperatures at ground truthing points
@@ -986,10 +929,13 @@ for year in years:
     #print(ymeans[year])
 
     #Adding modeled data back into predictors
-    working["Temperature (C)"]=y_pred
+    working["gp_temp"]=y_pred
     working=interpolate_means(working)
-    working["Temperature (C)"]=working["Temperature (C)"].rolling(n, min_periods=1).mean()
-    working["interpolated"]=working["interpolated"].rolling(n, min_periods=1).mean()
+    working.rename(columns={"interpolated":"idw_temp"}, inplace=True)
+    
+    for n in periods:
+        working["gp_temp_" + str(n)]=working["gp_temp"].rolling(n, min_periods=1).mean()
+        working["idw_temp_" + str(n)]=working["idw_temp"].rolling(n, min_periods=1).mean()
 
     agg=pd.concat([agg, working])
     
@@ -997,7 +943,7 @@ for year in years:
 ##Getting temperature from CTDEEP interpolation
 agg.loc[(223<=agg["Day"]) & (agg["Day"]<=225)].head()
 # +
-#Getting years ground truthing (shoot count)
+#Getting ground truthing for test years and aggregating for shoot count
 working=gt_data.loc[gt_data["Year"].isin(years)].copy()
 errors=working.groupby(["Station ID", "Year", "Day"]).std().reset_index()
 working=working.groupby(["Station ID", "Year", "Day"]).mean().reset_index()
@@ -1006,497 +952,199 @@ working=working.groupby(["Station ID", "Year", "Day"]).mean().reset_index()
 comp=working.merge(agg, how="left", on=["Station ID", "Year", "Day"])
 #print(comp)
 
-#Regression Line (gp)
-Y = comp[gt_var]
-X = comp["Temperature (C)"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_gp =model.fit()
-#print(results_gp.summary())
-p=results_gp.params
+#Making dataframe for all param results
+agg_results=pd.DataFrame()
 
-#Plotting and regression (gp)
-for sta in pd.unique(gt_data["Station ID"]):
-    working=comp.loc[comp["Station ID"]==sta]
+#Making dataframe for r2 results
+r2=pd.DataFrame(index=["R-Squared Value"])
+
+# +
+#Plots
+
+#Plotting data and regression line (gp)
+fig, ax = plt.subplots(len(periods))
+
+for i, n in enumerate(periods):
     
-    bars=errors.loc[errors["Station ID"]==sta, gt_var]
-    plt.errorbar(working["Temperature (C)"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+    for sta in pd.unique(gt_data["Station ID"]):
+        working=comp.loc[comp["Station ID"]==sta]
 
-    plt.scatter(working["Temperature (C)"], working[gt_var], s=100)
+        bars=errors.loc[errors["Station ID"]==sta, gt_var]
+        ax[i].errorbar(working["gp_temp_" + str(n)], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+
+        ax[i].scatter(working["gp_temp_" + str(n)], working[gt_var], s=100)
+
+        ax[i].set_title("Demeaned Shootcount vs. Gaussian Process-Predicted Trailing " + str(n) + " Day Avg Temp.", fontsize=18)
+        ax[i].set_ylabel("Demeaned Shootcount", fontsize=18)
+        ax[i].set_xlabel(str(n) + " Day Trailing Temp Avg", fontsize=18)
+
+    #Reg
+    Y = comp[gt_var]
+    X = comp[["gp_temp_" + str(n)]]
+    X=sm.add_constant(X)
+    model=sm.OLS(Y, X)
+    results =model.fit()
+    p=results.params
     
-    plt.title(gt_var + " vs. Gaussian Process-Predicted Temperature, 60 Day Trailing Avg", fontsize=18)
-    plt.ylabel(gt_var, fontsize=18)
-    plt.xlabel("Temperature (C)", fontsize=18)
+    #Plotting reg line
+    ax[i].plot(comp["gp_temp_" + str(n)], p.const + p["gp_temp_" + str(n)] * comp["gp_temp_" + str(n)], color="black")
+    fig.legend(pd.unique(gt_data["Station ID"]), prop={'size': 25})
+    plt.tight_layout(pad=10)
 
-#Plotting gp reg line
-plt.plot(comp["Temperature (C)"], p.const + p["Temperature (C)"] * comp["Temperature (C)"], color="black")
-plt.legend(pd.unique(gt_data["Station ID"]))
+#Plotting data and regression line (idw)
+fig, ax = plt.subplots(len(periods))
+
+for i, n in enumerate(periods):
+    
+    for sta in pd.unique(gt_data["Station ID"]):
+        working=comp.loc[comp["Station ID"]==sta]
+
+        bars=errors.loc[errors["Station ID"]==sta, gt_var]
+        ax[i].errorbar(working["idw_temp_" + str(n)], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+
+        ax[i].scatter(working["idw_temp_" + str(n)], working[gt_var], s=100)
+
+        ax[i].set_title("Demeaned Shootcount vs. CTDEEP IDW-Predicted  " + str(n) + " Day Avg Temp.", fontsize=18)
+        ax[i].set_ylabel("Demeaned Shootcount", fontsize=18)
+        ax[i].set_xlabel(str(n) + " Day Trailing Temp Avg", fontsize=18)
+
+    #Reg
+    Y = comp[gt_var]
+    X = comp[["idw_temp_" + str(n)]]
+    X=sm.add_constant(X)
+    model=sm.OLS(Y, X)
+    results =model.fit()
+    p=results.params
+    
+    #Plotting reg line
+    ax[i].plot(comp["idw_temp_" + str(n)], p.const + p["idw_temp_" + str(n)] * comp["idw_temp_" + str(n)], color="black")
+    fig.legend(pd.unique(gt_data["Station ID"]), prop={'size': 25})
+    plt.tight_layout(pad=10)
+
+
+# +
+#QQ plots
+
+#GP
+for i, n in enumerate(periods):
+    Y = comp[gt_var]
+    X = comp[["gp_temp_" + str(n)]]
+    X=sm.add_constant(X)
+    model=sm.OLS(Y, X)
+    results =model.fit()
+    resid=results.resid
+    
+    qq_plot = sm.qqplot(resid, stats.t, fit=True, line="45")
+    plt.show()
+
+#IDW
+for i, n in enumerate(periods):
+    Y = comp[gt_var]
+    X = comp[["idw_temp_" + str(n)]]
+    X=sm.add_constant(X)
+    model=sm.OLS(Y, X)
+    results =model.fit()
+    resid=results.resid
+    
+    qq_plot = sm.qqplot(resid, stats.t, fit=True, line="45")
+    plt.show()
+
+
+# +
+#Regression w/ gp temp
+results=pd.DataFrame()
+variables=["r2", ""]
+
+for i, n in enumerate((periods)):
+
+    reg_name="gp_temp_" + str(n)
+    comp["Temp_Rolling_Average"]=comp[reg_name]
+    temp_var=reg_name
+    control_var=[]
+    data=comp
+
+    #Covariance Matrix
+    print("Endogenous var correlation:")
+    print(np.corrcoef([comp["Temp_Rolling_Average"]] + [comp[var] for var in control_var]))
+
+    #Reg
+    Y = comp[gt_var]
+    X = comp[["Temp_Rolling_Average"]+control_var]
+    X=sm.add_constant(X)
+    model=sm.OLS(Y, X)
+    results =model.fit()
+    p=results.params
+    
+    #Printing and storing param results for concatentation
+    print(reg_name + " Results:")
+    print(results.summary())
+    
+    tabs = results.summary().tables
+    res_df = pd.read_html(tabs[1].as_html(), header=0, index_col=0)[0]
+    res_df.index=pd.MultiIndex.from_arrays([[temp_var]*len(res_df), res_df.index])
+    agg_results=pd.concat([agg_results, res_df], axis=0)
+    
+    #Adding to r-squared results
+    r2[reg_name]=results.rsquared
+    
+agg_results
+
+# +
+#Regression and plotting w/ idw temp
+
+for i, n in enumerate((periods)):
+
+    reg_name="idw_temp_" + str(n)
+    comp["Temp_Rolling_Average"]=comp[reg_name]
+    temp_var=reg_name
+    control_var=[]
+    data=comp
+
+    #Covariance Matrix
+    print("Endogenous var correlation:")
+    print(np.corrcoef([comp[temp_var]] + [comp[var] for var in control_var]))
+
+    #Reg
+    Y = comp[gt_var]
+    X = comp[["Temp_Rolling_Average"]+control_var]
+    X=sm.add_constant(X)
+    model=sm.OLS(Y, X)
+    results =model.fit()
+    p=results.params    
+    #Printing and storing param results for concatentation
+    print(reg_name + " Results " + str(n) + " Day Rolling Avg:")
+#   print(results.summary())
+    
+    tabs = results.summary().tables
+    res_df = pd.read_html(tabs[1].as_html(), header=0, index_col=0)[0]
+    res_df.index=pd.MultiIndex.from_arrays([[temp_var]*len(res_df), res_df.index])
+    agg_results=pd.concat([agg_results, res_df], axis=0)
+
+    #Adding to r-squared results
+    r2[reg_name]=results.rsquared
+    
 plt.show()
+agg_results
 
-#Regression Line (idw)
-Y = comp[gt_var]
-X = comp["interpolated"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_idw =model.fit()
-#print(results_idw.summary())
-p=results_idw.params
+# +
+#Reformatting results
+from pandas import IndexSlice as idx
+formatted = agg_results.unstack(level=0).stack(level=0)
+formatted.rename(columns= {col: "GP " + col[-2:] + " Day Trailing Avg" for col in formatted.columns if col[:2]=="gp"}, inplace=True)
+formatted.rename(columns= {col: "CTDEEP IDW " + col[-2:] + " Day Trailing Avg" for col in formatted.columns if col[:3]=="idw"}, inplace=True)
+formatted.rename(index={"Day":"Day of Year", "Temp_Rolling_Average":"Temperature Variable", "const":"Constant"}, inplace=True)
+formatted=formatted.loc[idx[:, ["coef", "t", "P>|t|"]], :]
+formatted.sort_index(level=0, inplace=True)
 
-#plotting (idw)
-for sta in pd.unique(gt_data["Station ID"]):
-    working=comp.loc[comp["Station ID"]==sta]
-    
-    bars=errors.loc[errors["Station ID"]==sta, gt_var]
-    plt.errorbar(working["interpolated"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-
-    plt.scatter(working["interpolated"], working[gt_var], s=100)
-
-    plt.title(gt_var + " vs. CTDEEP IDW-Predicted Temperature, " + str(n) + " Day Trailing Avg", fontsize=18)
-    plt.ylabel(gt_var, fontsize=18)
-    plt.xlabel("Temperature (C)", fontsize=18)
-
-#Plotting idw reg line
-plt.plot(comp["interpolated"], p.const + p["interpolated"] * comp["interpolated"], color="black")
-plt.legend(pd.unique(gt_data["Station ID"]))
-plt.show()
+#Adding r2 values
+r2.rename(columns= {col: "GP " + col[-2:] + " Day Trailing Avg" for col in r2.columns if col[:2]=="gp"}, inplace=True)
+r2.rename(columns= {col: "CTDEEP IDW " + col[-2:] + " Day Trailing Avg" for col in r2.columns if col[:3]=="idw"}, inplace=True)
+r2.index=pd.MultiIndex.from_arrays([["R-squared Value"], [""]])
+formatted=pd.concat([formatted, r2])
+formatted
 # -
 
-# ## Shoot Count Regs Summer Avg + Threshold
-
-import statsmodels.api as sm
-
-#Graphing param
-plt.rcParams["figure.figsize"]=(30, 20)
-
-# +
-#params
-gt_path="Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv"
-gt_var="Shoot Count"
-
-#Days for trailing mean
-n=60
-
-#Setting threshold
-thresh=20
-
-#Setting summer as time period for ground truthing of summer mean and days oveer thresh
-gt_days=range(182, 244)
-
-# +
-gt_data=pd.read_csv(gt_path, index_col=0)
-gt_data["Date"]=pd.to_datetime(gt_data["Date"])
-gt_data["Day"]=gt_data["Date"].dt.day_of_year
-gt_data["Year"]=gt_data["Date"].dt.year
-gt_data=gt_data.loc[gt_data["Year"].isin(years)]
-gt_data.rename(columns={"Number of Vegetative Shoots":"Shoot Count"}, inplace=True)
-
-gt_data
-
-# +
-#Predicting Temp for all days in gt_for_pred
-agg=pd.DataFrame()
-for year in years:
-
-## Getting temperature from GP Model
-    working=gt_for_pred[year]
-    print(pd.unique(working["Year"]))
-    
-    #Normalizing predictors
-    X_pred = working[indep_var].values
-    X_pred=X_pred - xmeans[year]
-    X_pred=X_pred / xstds[year]
-
-    #Using reindexed in prediction
-    y_pred, MSE = models[year].predict(X_pred, return_std=True)
-    y_pred+=ymeans[year]
-    #print(ymeans[year])
-
-    #Adding modeled data back into predictors
-    working["Temperature (C)"]=y_pred
-    agg=pd.concat([agg, working])
-    
-##Getting temperature from CTDEEP interpolation
-agg =interpolate_means(agg)
-agg.loc[(223<=agg["Day"]) & (agg["Day"]<=225)].head()
-# +
-#Getting years ground truthing for defined variable above
-
-fig, ax = plt.subplots(2, 2)
-
-##SUMMER MEAN
-
-working=gt_data.loc[gt_data["Year"].isin(years)].copy()
-
-#Aggregating interpolated ground truth data to get summer average and merging it with gt data
-temp=agg.groupby(["Station ID", "Year"]).mean().reset_index()
-comp=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
-errors=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).std().reset_index()
-
-print("Gaussian Process Summer Avg Regression Results:")
-#Regression Line (gp)
-Y = comp[gt_var]
-X = comp["Temperature (C)"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_gp =model.fit()
-print(results_gp.summary())
-p=results_gp.params
-
-#Plotting and regression (gp)
-for sta in pd.unique(gt_data["Station ID"]):
-    working=comp.loc[comp["Station ID"]==sta]
-    
-    bars=errors.loc[errors["Station ID"]==sta, gt_var]
-    ax[0, 0].errorbar(working["Temperature (C)"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-
-    ax[0, 0].scatter(working["Temperature (C)"], working[gt_var], s=100)
-    
-    ax[0, 0].set_title(gt_var +  " vs. Gaussian Process-Predicted Temperature (Summer Avg)", fontsize=18)
-    ax[0, 0].set_ylabel(gt_var, fontsize=18)
-    ax[0, 0].set_xlabel("Temperature (C)", fontsize=18)
-
-#Plotting gp reg line
-ax[0, 0].plot(comp["Temperature (C)"], p.const + p["Temperature (C)"] * comp["Temperature (C)"], color="black")
-fig.legend(pd.unique(gt_data["Station ID"]), prop={'size': 25}, bbox_to_anchor=[1.1, 1.05])
-
-print("IDW Summer Avg Regression Results:")
-#Regression Line (idw)
-Y = comp[gt_var]
-X = comp["interpolated"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_idw =model.fit()
-print(results_idw.summary())
-p=results_idw.params
-
-#plotting (idw)
-for sta in pd.unique(gt_data["Station ID"]):
-    working=comp.loc[comp["Station ID"]==sta]
-    
-    bars=errors.loc[errors["Station ID"]==sta, gt_var]
-    ax[0, 1].errorbar(working["interpolated"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-
-    ax[0, 1].scatter(working["interpolated"], working[gt_var], s=100)
-
-    ax[0, 1].set_title(gt_var + " vs. CTDEEP IDW-Predicted Temperature (Summer Avg)", fontsize=18)
-    ax[0, 1].set_ylabel(gt_var, fontsize=18)
-    ax[0, 1].set_xlabel("Temperature (C)", fontsize=18)
-
-#Plotting idw reg line
-ax[0, 1].plot(comp["interpolated"], p.const + p["interpolated"] * comp["interpolated"], color="black")
-
-## DAYS OVER THRESHOLD
-comp=pd.DataFrame()
-
-#Getting days over threshold using the same "agg" from summer means calculation above
-working=agg.copy()
-
-#Temperature threshold for gaussian process
-working["thresh_gp"]= working["Temperature (C)"]>thresh
-working["thresh_gp"]=working["thresh_gp"].astype(int)
-
-#Temperature threshold for CTDEEP idw data
-working["thresh_idw"]= working["interpolated"]>thresh
-working["thresh_idw"]=working["thresh_idw"].astype(int)
-
-to_merge = pd.DataFrame(working.groupby(["Station ID", "Year"])[["thresh_gp", "thresh_idw"]].sum())
-to_merge.reset_index(inplace=True)
-#print(to_merge)
-
-working=gt_data.loc[gt_data["Year"].isin(years)].copy()
-
-#Re-merging gt from above with days over threshold
-comp=working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
-errors = working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).std().reset_index()
-
-print(errors.tail())
-print("comp")
-print(comp.tail())
-
-print("IDW Days Over Threshold Results:")
-#Regression Line (gp)
-Y = comp[gt_var]
-X = comp["thresh_gp"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_gp =model.fit()
-print(results_gp.summary())
-p=results_gp.params
-
-#Plotting gp threshold estimates by year to visualize
-#Plotting and regression (gp)
-for sta in pd.unique(gt_data["Station ID"]):
-    #data
-    working=comp.loc[comp["Station ID"]==sta]
-
-    #erors
-    bars=errors.loc[errors["Station ID"]==sta, gt_var]
-    ax[1, 0].errorbar(working["thresh_gp"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-
-    #plot data
-    ax[1, 0].scatter(working["thresh_gp"], working[gt_var], s=100)
-
-ax[1, 0].plot(comp["thresh_gp"], p.const + p["thresh_gp"] * comp["thresh_gp"], color="black")
-ax[1, 0].set_title(gt_var + " vs. GP Predicted Days Over "  + str(thresh) + " Threhsold", fontsize=18)
-ax[1, 0].set_ylabel(gt_var, fontsize=18)
-ax[1, 0].set_xlabel("Days Above Threshold for the Year", fontsize=18)
-
-print("IDW Days Over Threshold Results:")
-#Regression Line (idw)
-Y = comp[gt_var]
-X = comp["thresh_idw"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_gp =model.fit()
-print(results_gp.summary())
-p=results_gp.params
-
-#plotting (idw)
-for sta in pd.unique(gt_data["Station ID"]):
-    #data
-    working=comp.loc[comp["Station ID"]==sta]
-    
-    #errors
-    bars=errors.loc[errors["Station ID"]==sta, gt_var]
-    ax[1, 1].errorbar(working["thresh_idw"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-    
-    #plot data
-    ax[1, 1].scatter(working["thresh_idw"], working[gt_var], s=100)
-    
-ax[1, 1].plot(comp["thresh_idw"], p.const + p["thresh_idw"] * comp["thresh_idw"], color="black")
-ax[1, 1].set_title(gt_var +  " vs. IDW Predicted Days Over " + str(thresh) + " Threhsold", fontsize=18)
-ax[1, 1].set_ylabel(gt_var, fontsize=18)
-ax[1, 1].set_xlabel("Days Above Threshold for the Year", fontsize=18)
-fig.tight_layout()
-
-plt.show()
-# -
-
-# ## Shoot Count Die-Off Regs
-
-#Graphing param
-plt.rcParams["figure.figsize"]=(30, 20)
-
-import statsmodels.api as sm
-
-# +
-#params
-gt_path="Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv"
-gt_var="Aug_to_Sep"
-start_month=8
-end_month=9
-
-#Days for trailing mean
-n=60
-
-#Setting threshold
-thresh=20
-
-#Setting summer as time period for ground truthing of summer mean and days oveer thresh
-gt_days=range(182, 244)
-
-# +
-gt_data=pd.read_csv(gt_path, index_col=0)
-gt_data["Date"]=pd.to_datetime(gt_data["Date"])
-gt_data["Day"]=gt_data["Date"].dt.day_of_year
-gt_data["Year"]=gt_data["Date"].dt.year
-gt_data["Month"]=gt_data["Date"].dt.month
-
-gt_data=gt_data.loc[gt_data["Year"].isin(years)]
-gt_data.rename(columns={"Number of Vegetative Shoots":"Shoot Count"}, inplace=True)
-
-delta=gt_data.groupby(["Station ID", "Year", "Month"]).mean()["Shoot Count"].unstack(level=2)
-delta[gt_var]=delta[end_month]-delta[start_month]
-delta = pd.DataFrame(delta[gt_var].reset_index())
-print(delta)
-
-gt_data=gt_data.groupby(["Station ID", "Year"]).mean().reset_index()
-gt_data=gt_data.merge(delta, how="left", on=["Station ID", "Year"])
-gt_data
-
-# +
-#Predicting Temp for all days in gt_for_pred
-agg=pd.DataFrame()
-for year in years:
-
-## Getting temperature from GP Model
-    working=gt_for_pred[year]
-    print(pd.unique(working["Year"]))
-    
-    #Normalizing predictors
-    X_pred = working[indep_var].values
-    X_pred=X_pred - xmeans[year]
-    X_pred=X_pred / xstds[year]
-
-    #Using reindexed in prediction
-    y_pred, MSE = models[year].predict(X_pred, return_std=True)
-    y_pred+=ymeans[year]
-    #print(ymeans[year])
-
-    #Adding modeled data back into predictors
-    working["Temperature (C)"]=y_pred
-    agg=pd.concat([agg, working])
-    
-##Getting temperature from CTDEEP interpolation
-agg =interpolate_means(agg)
-agg.loc[(223<=agg["Day"]) & (agg["Day"]<=225)].head()
-# +
-#Getting years ground truthing for defined variable above
-
-fig, ax = plt.subplots(2, 2)
-
-##SUMMER MEAN
-
-working=gt_data.loc[gt_data["Year"].isin(years)].copy()
-
-#Aggregating interpolated ground truth data to get summer average and merging it with gt data
-temp=agg.groupby(["Station ID", "Year"]).mean().reset_index()
-comp=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
-errors=working.merge(temp, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).std().reset_index()
-
-print("Gaussian Process Summer Avg Regression Results:")
-#Regression Line (gp)
-Y = comp[gt_var]
-X = comp["Temperature (C)"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_gp =model.fit()
-print(results_gp.summary())
-p=results_gp.params
-
-#Plotting and regression (gp)
-for sta in pd.unique(gt_data["Station ID"]):
-    working=comp.loc[comp["Station ID"]==sta]
-    
-    bars=errors.loc[errors["Station ID"]==sta, gt_var]
-    ax[0, 0].errorbar(working["Temperature (C)"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-
-    ax[0, 0].scatter(working["Temperature (C)"], working[gt_var], s=100)
-    
-    ax[0, 0].set_title(gt_var +  " vs. Gaussian Process-Predicted Temperature (Summer Avg)", fontsize=18)
-    ax[0, 0].set_ylabel(gt_var, fontsize=18)
-    ax[0, 0].set_xlabel("Temperature (C)", fontsize=18)
-
-#Plotting gp reg line
-ax[0, 0].plot(comp["Temperature (C)"], p.const + p["Temperature (C)"] * comp["Temperature (C)"], color="black")
-fig.legend(pd.unique(gt_data["Station ID"]), prop={'size': 25}, bbox_to_anchor=[1.1, 1.05])
-
-print("IDW Summer Avg Regression Results:")
-#Regression Line (idw)
-Y = comp[gt_var]
-X = comp["interpolated"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_idw =model.fit()
-print(results_idw.summary())
-p=results_idw.params
-
-#plotting (idw)
-for sta in pd.unique(gt_data["Station ID"]):
-    working=comp.loc[comp["Station ID"]==sta]
-    
-    bars=errors.loc[errors["Station ID"]==sta, gt_var]
-    ax[0, 1].errorbar(working["interpolated"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-
-    ax[0, 1].scatter(working["interpolated"], working[gt_var], s=100)
-
-    ax[0, 1].set_title(gt_var + " vs. CTDEEP IDW-Predicted Temperature (Summer Avg)", fontsize=18)
-    ax[0, 1].set_ylabel(gt_var, fontsize=18)
-    ax[0, 1].set_xlabel("Temperature (C)", fontsize=18)
-
-#Plotting idw reg line
-ax[0, 1].plot(comp["interpolated"], p.const + p["interpolated"] * comp["interpolated"], color="black")
-
-## DAYS OVER THRESHOLD
-comp=pd.DataFrame()
-
-#Getting days over threshold using the same "agg" from summer means calculation above
-working=agg.copy()
-
-#Temperature threshold for gaussian process
-working["thresh_gp"]= working["Temperature (C)"]>thresh
-working["thresh_gp"]=working["thresh_gp"].astype(int)
-
-#Temperature threshold for CTDEEP idw data
-working["thresh_idw"]= working["interpolated"]>thresh
-working["thresh_idw"]=working["thresh_idw"].astype(int)
-
-to_merge = pd.DataFrame(working.groupby(["Station ID", "Year"])[["thresh_gp", "thresh_idw"]].sum())
-to_merge.reset_index(inplace=True)
-#print(to_merge)
-
-working=gt_data.loc[gt_data["Year"].isin(years)].copy()
-
-#Re-merging gt from above with days over threshold
-comp=working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).mean().reset_index()
-errors = working.merge(to_merge, how="left", on=["Station ID", "Year"]).groupby(["Station ID", "Year"]).std().reset_index()
-
-print(errors.tail())
-print("comp")
-print(comp.tail())
-
-print("IDW Days Over Threshold Results:")
-#Regression Line (gp)
-Y = comp[gt_var]
-X = comp["thresh_gp"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_gp =model.fit()
-print(results_gp.summary())
-p=results_gp.params
-
-#Plotting gp threshold estimates by year to visualize
-#Plotting and regression (gp)
-for sta in pd.unique(gt_data["Station ID"]):
-    #data
-    working=comp.loc[comp["Station ID"]==sta]
-
-    #erors
-    bars=errors.loc[errors["Station ID"]==sta, gt_var]
-    ax[1, 0].errorbar(working["thresh_gp"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-
-    #plot data
-    ax[1, 0].scatter(working["thresh_gp"], working[gt_var], s=100)
-
-ax[1, 0].plot(comp["thresh_gp"], p.const + p["thresh_gp"] * comp["thresh_gp"], color="black")
-ax[1, 0].set_title(gt_var + " vs. GP Predicted Days Over "  + str(thresh) + " Threhsold", fontsize=18)
-ax[1, 0].set_ylabel(gt_var, fontsize=18)
-ax[1, 0].set_xlabel("Days Above Threshold for the Year", fontsize=18)
-
-print("IDW Days Over Threshold Results:")
-#Regression Line (idw)
-Y = comp[gt_var]
-X = comp["thresh_idw"]
-X=sm.add_constant(X)
-model=sm.OLS(Y, X)
-results_gp =model.fit()
-print(results_gp.summary())
-p=results_gp.params
-
-#plotting (idw)
-for sta in pd.unique(gt_data["Station ID"]):
-    #data
-    working=comp.loc[comp["Station ID"]==sta]
-    
-    #errors
-    bars=errors.loc[errors["Station ID"]==sta, gt_var]
-    ax[1, 1].errorbar(working["thresh_idw"], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
-    
-    #plot data
-    ax[1, 1].scatter(working["thresh_idw"], working[gt_var], s=100)
-    
-ax[1, 1].plot(comp["thresh_idw"], p.const + p["thresh_idw"] * comp["thresh_idw"], color="black")
-ax[1, 1].set_title(gt_var +  " vs. IDW Predicted Days Over " + str(thresh) + " Threhsold", fontsize=18)
-ax[1, 1].set_ylabel(gt_var, fontsize=18)
-ax[1, 1].set_xlabel("Days Above Threshold for the Year", fontsize=18)
-fig.tight_layout()
-
-plt.show()
-# -
-
-# ## Repro Counts Regs
-
-import statsmodels.api as sm
+# ## Repro Counts Trailing Mean
 
 # +
 #params
@@ -1504,22 +1152,21 @@ gt_path="Data/Dominion Energy/Millstone_Repro_Counts.csv"
 gt_var="ReproCount"
 
 #Days for trailing mean
-n=60
+periods=[30, 60, 90]
 
-#Setting threshold
-thresh=20
-
-#Setting summer as time period for ground truthing of summer mean and days oveer thresh
-gt_days=range(182, 244)
+#Setting summer as time period for ground truthing of summer mean and days over thresh
+gt_days=range(162, 269)
 
 # +
 gt_data=pd.read_csv(gt_path)
-gt_data=gt_data.loc[gt_data["Year"].isin(years)]
 
 gt_data.replace({"Jordan Cove": "JC", "Niantic River": "NR", "White Point":"WP"}, inplace=True)
 gt_data.rename(columns={"Station": "Station ID"}, inplace=True)
 
 gt_data.head()
+# -
+
+
 
 # +
 #Predicting Temp for all days in gt_for_pred

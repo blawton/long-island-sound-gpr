@@ -35,4 +35,8 @@ means
 
 means
 
+#Getting RMSE of chosen Kernel
+res = pd.DataFrame(-means.loc["1**2 * RBF(length_scale=[1, 1, 1, 1]) + 1**2 * RationalQuadratic(alpha=1, length_scale=1)"]["mean_test_neg_root_mean_squared_error"])
+res.rename(columns={"mean_test_neg_root_mean_squared_error":"Root Mean Squared Error"})
+
 

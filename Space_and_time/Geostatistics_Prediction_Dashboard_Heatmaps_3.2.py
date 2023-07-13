@@ -55,11 +55,10 @@ plt.rcParams["figure.figsize"]=(30, 25)
 #Global Params:
 
 #Defining Eastern Sound Window (useful for visualizing cropped distance map)
-lon_min=-72.592354875000
-lon_max=-71.811481513000
-
-lat_min=40.970592192000
-lat_max=41.545060950000
+lon_min=-72.59
+lon_max=-71.81
+lat_min=40.97
+lat_max=41.54
 
 #This should always be set to TRUE for this notebook
 es=True
@@ -221,8 +220,8 @@ array.shape
 plt.rcParams["figure.figsize"]=(20, 15)
 plt.axis("off")
 plt.imshow(array)
-plt.title("Fig 2: Embayments in Eastern Sound within Range of Model", fontsize=24)
-plt.savefig("Figures_for_paper/fig2.png")
+plt.title("Fig 5: Embayments in Eastern Sound within Range of Model", fontsize=24)
+plt.savefig("Figures_for_paper/fig5.png")
 
 # ## Reading csv and building model
 
@@ -479,18 +478,20 @@ cbar.ax.tick_params(labelsize=24)
 cax = efig.add_axes([0.1,0.05,0.8,0.03])
 cbar = efig.colorbar(eim, cax=cax, orientation='horizontal')
 cbar.set_label('Standard Deviation in Deg C', fontsize=24)
-hfig.suptitle("Figure 6: Gaussian Process-Predicted Temperature in Eastern Sound Embayments", fontsize=32)
+hfig.suptitle("Figure 7: Gaussian Process-Predicted Temperature in Eastern Sound Embayments", fontsize=32)
 cbar.ax.tick_params(labelsize=24)
 
 hfig.savefig("Graphs/June_Heatmaps/ES_Heatmaps.png", bbox_inches='tight')
-hfig.savefig("Figures_for_paper/fig6.png", bbox_inches='tight')
+hfig.savefig("Figures_for_paper/fig7a.png", bbox_inches='tight')
 
 efig.savefig("Graphs/June_Heatmaps/ES_Dependent_Errors.png", bbox_inches='tight')
-#efig.savefig("Figures_for_paper/fig5b.png")
+efig.savefig("Figures_for_paper/fig7b.png")
 
 plt.show()
 # -
 
+
+# ## Summer Averages
 
 #Params for graphs of thresholds and summer averages
 thresholds = [20, 25]
@@ -525,7 +526,10 @@ for i, year in enumerate(years):
     plt.savefig("Graphs/June_Heatmaps/ES_Summer_Average_" + str(year) + ".png")
     plt.show()
     
+# -
 
+
+# ## Days Over Thresholds
 
 # +
 #Days over Chosen Threshold(s)
@@ -706,7 +710,7 @@ plt.axis("off")
 cbar = plt.colorbar(display, location="right", shrink=.75)
 cbar.set_label('Temperature (C)', rotation=270, fontsize=18, labelpad=30)
 cbar.ax.tick_params(labelsize=18)
-plt.title("Figure 4: Inverse Distance Weighted CT DEEP temperature data in Eastern LIS", fontsize=24)
+plt.title("Figure 5: Inverse Distance Weighted CT DEEP temperature data in Eastern LIS", fontsize=24)
 plt.savefig("Figures_for_paper/fig4.png")
 
 bins=[0, 21, 21.4, 21.9, 22.3, 22.8, 23.2, 23.7, 24.1, 24.6, 25, 100]
@@ -761,171 +765,27 @@ plt.tight_layout()
 
 plt.rcParams["figure.figsize"]=(30, 20)
 
-display=plt.imshow(avg_temp-avg_temp2, cmap="seismic", vmin=-7, vmax=7)
+display=plt.imshow(avg_temp-avg_temp2, cmap="seismic")
 cbar = plt.colorbar(display, location="bottom", shrink=.75)
 cbar.set_label('Increase in Temp with Embayment Data + GP (Degrees (C))', fontsize=18, labelpad=30)
 cbar.ax.tick_params(labelsize=18)
 plt.axis("off")
-plt.title("Figure 7: GP Temperature Model and CTDEEP IDW comparison", fontsize=24)
-plt.savefig(paths[7] + "EHSI_open_sound_vs_embayment_bias_graph.png", )
-plt.savefig("Figures_for_paper/fig7.png", bbox_inches='tight')
+plt.title("Figure 8: GP Temperature Model and CTDEEP IDW comparison", fontsize=24)
+plt.savefig(paths[7] + "EHSI_open_sound_vs_embayment_bias_graph_raw.png", )
 plt.show()
 
 # ### Reclassified Difference
 
 plt.rcParams["figure.figsize"]=(30, 20)
 
-display=plt.imshow(reclass1-reclass2, cmap="seismic", vmin=-7, vmax=7)
+display=plt.imshow(reclass1-reclass2, cmap="seismic", vmin=-6, vmax=6)
 cbar = plt.colorbar(display, location="bottom", shrink=.75)
-cbar.set_label('Bias in Temperature Score', fontsize=18, labelpad=30)
+cbar.set_label('New Model Increase in EHSI Temp. Component', fontsize=18, labelpad=30)
 cbar.ax.tick_params(labelsize=18)
 plt.axis("off")
-plt.title("EHSI Open Sound vs Embayment Bias Graph", fontsize=24)
+plt.title("Figure 8: GP Temperature Model and CTDEEP IDW comparison", fontsize=24)
+plt.savefig(paths[7] + "EHSI_open_sound_vs_embayment_bias_graph.png", )
+plt.savefig("Figures_for_paper/fig8.png", bbox_inches='tight')
 plt.show()
-
-# +
-#Final EHSI file cropped and resampled
-paths[4] = config["EHSI_Update_path4"]
-
-#Opening prior EHSI
-ehsi = gdal.Open(paths[4])
-band=ehsi.GetRasterBand(1)
-array_ehsi=band.ReadAsArray()
-
-#Slight reshaping
-print(array_ehsi.shape)
-array_ehsi=array_ehsi[:,:-1]
-print(array_ehsi.shape)
-print(array_ehsi.shape==array.shape)
-
-#The above reshaping implies there could be a mismatch of the grids on the order of 1 in 7000 of the total lenth of the eastern sound grid. This is an acceptable level of error for the purposes of this exercise
-
-#Fixing noise at the top
-array_ehsi[:150, :]=0
-
-#Rescaling to actual score (max should be 100)
-print(array_ehsi.max())
-array_ehsi+=27
-print(array_ehsi.max())
-array_ehsi=np.where(array_ehsi==27, np.nan, array_ehsi)
-
-#Striding array to match coastal stride of heatmap outputs
-ehsi_resampled=array_ehsi[0::stride, 0::stride].copy()
-print(ehsi_resampled.shape==reclass1.shape)
-
-#Matching nas to nas of predicted heatmap
-ehsi_resampled=np.where(np.isnan(reclass1), np.nan, ehsi_resampled)
-
-#Plotting
-fig, ax= plt.subplots()
-ehsi=plt.imshow(ehsi_resampled)
-fig.colorbar(ehsi, location="right", shrink=.75)
-plt.axis("off")
-# -
-
-#Adjusted EHSI
-adjusted=ehsi_resampled-2*(reclass1-reclass2)
-
-# +
-#Plotting new ehsi alongside old
-plt.rcParams["figure.figsize"]=(30, 20)
-
-#Graphing Params
-bottom=.25
-top=.6
-height=ehsi_resampled.shape[0]
-width=ehsi_resampled.shape[1]
-
-fig, ax= plt.subplots(2)
-display =ax[0].imshow(ehsi_resampled[int(height*bottom):int(height*top), :], vmin=60, vmax=100)
-ax[0].set_title("Original EHSI", fontsize=24)
-ax[0].axis("off")
-
-display=ax[1].imshow(adjusted[int(height*bottom):int(height*top), :], vmin=60, vmax=100)
-ax[1].set_title("Embayment Temperature EHSI", fontsize=24)
-ax[1].axis("off")
-
-cbar_ax = fig.add_axes([0, 0.15, 0.05, 0.7])
-cbar=fig.colorbar(display, shrink=.75, cax=cbar_ax)
-cbar.ax.tick_params(labelsize=18)
-cbar.set_label('EHSI Score', fontsize=18, labelpad=30)
-plt.savefig(paths[7] + "Graph_Comparison_Original_EHSI_vs_Embayment_Adjustment.png")
-plt.show()
-
-# -
-
-# ## Producing TIFFs
-
-new_gt=(gt[0], gt[1]*stride, gt[2], gt[3], gt[4], gt[5]*stride)
-new_gt
-
-# ### EHSI Bias
-
-#Downloading geotiff of model
-driver = gdal.GetDriverByName("GTiff")
-driver.Register()
-name = paths[7] + "Final_Temperature_Model_EHSI_bias.tif"
-outds = driver.Create(name, xsize=avg_hmaps[year].shape[1], ysize=avg_hmaps[year].shape[0], bands=1, eType=gdal.GDT_Float32)
-outds.SetGeoTransform(new_gt)
-outds.SetProjection(proj)
-outband = outds.GetRasterBand(1)
-outband.WriteArray(reclass1-reclass2)
-outband.SetNoDataValue(np.nan)
-outband.FlushCache()
-outband=None
-outds=None
-
-#Testing saved geotiff
-name = paths[7] + "Final_Temperature_Model_EHSI_bias.tif"
-test=gdal.Open(name)
-band=test.GetRasterBand(1)
-array=band.ReadAsArray()
-plt.imshow(array)
-
-# ### New EHSI Layer
-
-#Downloading geotiff of model
-driver = gdal.GetDriverByName("GTiff")
-driver.Register()
-name = paths[7] + "Final_Temperature_Model_Adjusted_EHSI.tif"
-outds = driver.Create(name, xsize=avg_hmaps[year].shape[1], ysize=avg_hmaps[year].shape[0], bands=1, eType=gdal.GDT_Float32)
-outds.SetGeoTransform(new_gt)
-outds.SetProjection(proj)
-outband = outds.GetRasterBand(1)
-outband.WriteArray(adjusted)
-outband.SetNoDataValue(np.nan)
-outband.FlushCache()
-outband=None
-outds=None
-
-#Testing saved geotiff
-name = paths[7] + "Final_Temperature_Model_Adjusted_EHSI.tif"
-test=gdal.Open(name)
-band=test.GetRasterBand(1)
-array=band.ReadAsArray()
-plt.imshow(array)
-
-# ### Original EHSI Layer
-
-#Downloading geotiff of model
-driver = gdal.GetDriverByName("GTiff")
-driver.Register()
-name = paths[7] + "Original_EHSI.tif"
-outds = driver.Create(name, xsize=avg_hmaps[year].shape[1], ysize=avg_hmaps[year].shape[0], bands=1, eType=gdal.GDT_Float32)
-outds.SetGeoTransform(new_gt)
-outds.SetProjection(proj)
-outband = outds.GetRasterBand(1)
-outband.WriteArray(ehsi_resampled)
-outband.SetNoDataValue(np.nan)
-outband.FlushCache()
-outband=None
-outds=None
-
-#Testing saved geotiff
-name = paths[7] + "Original_EHSI.tif"
-test=gdal.Open(name)
-band=test.GetRasterBand(1)
-array=band.ReadAsArray()
-plt.imshow(array)
 
 
