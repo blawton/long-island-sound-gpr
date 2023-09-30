@@ -39,13 +39,15 @@ import os
 inputs={}
 
 #Input of Aggregate Data with embay_dist attached (output_1 of Geostatistics_Workbook..._time)
-inputs[1]="Data/Space_and_time_agg/agg_daily_morning_coastal_features_4_22_2023.csv"
+inputs[1]= "Data/Space_and_time_agg/agg_daily_morning_coastal_features_6_21_2023.csv"
 
 for path in inputs.values():
     assert(os.path.exists(path))
 
 # +
 #Global Params
+es=False
+ja=True
 
 folds=5
 
@@ -71,10 +73,23 @@ nro=15
 #In this file, kernel, lsb, and noise_alpha are set
 lsb=(1e-5, 1e5)
 
-kernels=[1*RBF([1]*predictors, length_scale_bounds=lsb) + 1*RationalQuadratic(length_scale_bounds=lsb),
-         1 * Matern([1]*predictors, nu=1.5, length_scale_bounds=lsb) + 1 * RationalQuadratic(length_scale_bounds=lsb),
-         1 * Matern([1]*predictors, nu=.5, length_scale_bounds=lsb) + 1 * RBF([1]*predictors, length_scale_bounds=lsb)
-        ]
+#Defining Eastern Sound Window (useful for visualizing cropped distance map)
+lon_min=-72.59
+lon_max=-71.81
+lat_min=40.97
+lat_max=41.54
+
+#Kernels from geostatistics prediction dashboard
+kernels_liss = {2019: 1.06**2 * RBF(length_scale=[0.0334, 0.135, 2.29e+03, 0.185], length_scale_bounds="fixed") + 2.85**2 * RationalQuadratic(alpha=0.266, length_scale=1.85, alpha_bounds="fixed", length_scale_bounds="fixed"),
+2020:0.939**2 * RBF(length_scale=[0.0683, 0.106, 7.87, 0.14], length_scale_bounds="fixed") + 5.53**2 * RationalQuadratic(alpha=0.126, length_scale=4.06, alpha_bounds="fixed", length_scale_bounds="fixed"),
+2021:1.09**2 * RBF(length_scale=[0.213, 0.159, 4.78, 0.122], length_scale_bounds="fixed") + 1.51**2 * RationalQuadratic(alpha=0.412, length_scale=1.26, alpha_bounds="fixed", length_scale_bounds="fixed")
+}
+kernels_es = {2019: 0.645**2 * RBF(length_scale=[3.17, 3.04e+03, 6.03, 0.0479], length_scale_bounds="fixed") + 7.4**2 * RationalQuadratic(alpha=0.0217, alpha_bounds="fixed", length_scale=1.29, length_scale_bounds="fixed"),
+2020: 1.3**2 * RBF(length_scale=[4.42, 1e+05, 22.9, 0.054], length_scale_bounds="fixed") + 3.45**2 * RationalQuadratic(alpha=0.0324, length_scale=0.451, alpha_bounds="fixed", length_scale_bounds="fixed"),
+2021: 1.46**2 * RBF(length_scale=[5.52, 4.97, 3.84, 0.052], length_scale_bounds="fixed") + 4.03**2 * RationalQuadratic(alpha=0.0231, length_scale=0.538, alpha_bounds="fixed", length_scale_bounds="fixed")    
+}
+
+kernels={year: [kernels_es[year]] for year in years}
 
 noise_alpha=.25
 # -
@@ -86,10 +101,13 @@ df=pd.read_csv(inputs[1], index_col=0)
 df.reset_index(inplace=True, drop=True)
 df.head()
 
-#Checking Dominion Stations to Make Sure they are in Vaudrey Embayment (C and NB)
-df.loc[df["Organization"]=="Dominion"]
+#Restricting to Proper Training Dataset
+if es:
+    df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
+if ja:
+    df=df.loc[(df["Day"]<=244) & (df["Day"]>=182)]
 
-#Dropping nas (need to un-hardcord)
+#Dropping nas (need to un-hardcode)
 print(len(df))
 df.dropna(subset=["Station ID", "Longitude", "Latitude", "Day", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
@@ -122,43 +140,6 @@ for year in years:
     print(pipe.fit_transform(X, y))
 
 # +
-#Testing standardscaler
-CV_results={}
-CV_best_estimators={}
-
-gp = GaussianProcessRegressor(alpha=noise_alpha, n_restarts_optimizer=nro)
-
-pipe = Pipeline([('scaler', StandardScaler()),
-                 ('model', gp)])
-
-parameters = {
-    "model__kernel": kernels
-}
-
-clf = GridSearchCV(pipe, param_grid=parameters, cv=GroupKFold(n_splits=folds), n_jobs=-1, scoring=scores, refit=priority_score)
-    
-for year in years:
-    #Selecting year
-    data = df.loc[df["Year"]==year, station_var+ind_var+dep_var].values
-    
-    #Splitting into groups, indep, and dep vars
-    groups, X, y = data[:, 0], data[:, 1:predictors+1], data[:, -1]
-
-    #De-meaning output
-    y -= np.mean(y)
-    
-    #Fitting cross validation
-    clf.fit(X, y, groups=groups)
-    
-    CV_results[year] = clf.cv_results_
-    CV_best_estimators[year] =clf.best_estimator_
-    
-    #Saving to file
-    pd.DataFrame(CV_results[year]).to_csv("Results/Optimization_with_Pre_Processing_results_" + str(year)+ ".csv")
-    
-    print(year)
-
-# +
 #Block for iteration through years
 CV_results={}
 CV_best_estimators={}
@@ -169,7 +150,7 @@ pipe = Pipeline([('scaler', StandardScaler()),
                  ('model', gp)])
 
 parameters = {
-    "model__kernel": kernels
+    "model__kernel": kernels[year]
 }
 
 clf = GridSearchCV(pipe, param_grid=parameters, cv=GroupKFold(n_splits=folds), n_jobs=-1, scoring=scores, refit=priority_score)
@@ -191,7 +172,7 @@ for year in years:
     CV_best_estimators[year] =clf.best_estimator_
     
     #Saving to file
-    pd.DataFrame(CV_results[year]).to_csv("Results/Optimization_with_Pre_Processing_results_" + str(year)+ ".csv")
+    pd.DataFrame(CV_results[year]).to_csv("Results/Optimization_with_Pre_Processing_results_es_JA_" + str(year)+ ".csv")
     
     print(year)
 # -
@@ -199,5 +180,7 @@ for year in years:
 pd.DataFrame(CV_results[2020])
 
 clf.predict([X[0,:]])
+
+CV_best_estimators[year]
 
 

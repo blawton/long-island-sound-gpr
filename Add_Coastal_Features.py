@@ -172,26 +172,41 @@ plt.show()
 display_array = np.where(array>0, np.nan, .5)
 display_array[0,0]=1
 
+#Reloading Ouput of stations
+working=pd.read_csv("Data/Space_and_time_agg/agg_daily_morning_coastal_features_6_21_2023.csv")
 working=working.loc[working["Year"].isin(range(2019, 2022))]
 
-#Figure 1a: all stations in the LIS
+# +
+#Figure 1a: Non-continuous monitoring stations in LIS
 plt.figure()
-plt.imshow(display_array)
-plt.scatter(working["xPixel"], working["yPixel"], cmap="gray", vmin=0, vmax=1, marker="x", c="red")
-plt.title("Fig 1a: Sampling Locations", size= "xx-large")
-plt.axis("off")
-plt.savefig("Figures_for_paper/fig1a.png")
-plt.show()
+#plt.imshow(display_array)
 
+dis=working.loc[~working["Organization"].isin(cont_orgs)]
+
+#Saving data to make Figure 1
+dis.to_csv("Figures_for_paper/fig1_discrete.csv")
+
+#plt.scatter(dis["xPixel"], dis["yPixel"], cmap="gray", vmin=0, vmax=1, marker="x", c="red", s=200)
+#plt.title("Fig 1a: Sampling Locations", size= "xx-large")
+#plt.axis("off")
+#plt.savefig("Figures_for_paper/fig1a.png")
+#plt.show()
+
+# +
 #Figure 1b: only continuous stations in the LIS
 plt.figure()
-plt.imshow(display_array)
-working=working.loc[working["Organization"].isin(cont_orgs)]
-plt.scatter(working["xPixel"], working["yPixel"], cmap="gray", vmin=0, vmax=1, marker="x", c="red")
-plt.title("Fig 1b: Continuous Sampling Locations", size= "xx-large")
-plt.axis("off")
-plt.savefig("Figures_for_paper/fig1b.png")
-plt.show()
+#plt.imshow(display_array)
+cont=working.loc[working["Organization"].isin(cont_orgs)]
+
+#Saving data to make Figure 1
+cont.to_csv("Figures_for_paper/fig1_cont.csv")
+
+#plt.scatter(cont["xPixel"], cont["yPixel"], cmap="gray", vmin=0, vmax=1, marker="x", s=200, c="red")
+#plt.title("Fig 1b: Continuous Sampling Locations", size= "xx-large")
+#plt.axis("off")
+#plt.savefig("Figures_for_paper/fig1b.png")
+#plt.show()
+# -
 
 print(array.shape)
 

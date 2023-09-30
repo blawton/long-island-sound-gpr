@@ -58,6 +58,13 @@ pd.options.display.max_columns=150
 plt.rcParams["figure.figsize"]=(30, 25)
 
 # +
+lon_min_z = -72.6
+lon_max_z = -71.8
+
+lat_min_z= 41.2
+lat_max_z=41.4
+
+# +
 #Global Params:
 
 #Defining Eastern Sound Window (useful for visualizing cropped distance map)
@@ -124,6 +131,9 @@ paths[8] = config["Prediction_Dashboard_path8"]
 
 #Ouput Path for tiffs
 paths[7] = config["Prediction_Dashboard_output"]
+
+#For embayment distance but cropped
+cropped = config["Prediction_Dashboard_path9"]
 
 #CSV
 
@@ -196,9 +206,6 @@ array_os
 
 array_embay_dist
 
-#Starting visualization
-plt.imshow(array_embay_dist)
-
 #Getting rid of mystic (state boundaries need to be double checked with os to avoid making fisher's island embayments)
 array=np.where(array_all!=0, array_embay_dist, np.nan)
 array=np.where(np.isnan(array), array_os, array)
@@ -208,23 +215,8 @@ array=np.where(array<0, np.nan, array)
 
 #Final Array only for embayments
 embay_only=np.where(array_embay_dist>0, array, np.nan)
-plt.imshow(embay_only)
+#plt.imshow(embay_only)
 plt.axis("off")
-
-# +
-# #Outputting Final Embayment Distance to avoid repeating above
-# driver = gdal.GetDriverByName("GTiff")
-# driver.Register()
-# outds = driver.Create(paths[6], xsize=cols, ysize=rows, bands=1, eType=gdal.GDT_Int16)
-# outds.SetGeoTransform(gt)
-# outds.SetProjection(proj)
-# outband = outds.GetRasterBand(1)
-# outband.WriteArray(embay_only)
-# outband.SetNoDataValue(np.nan)
-# outband.FlushCache()
-# outband=None
-# outds=None
-# -
 
 # # Reading in Data and Building in Model
 
@@ -233,10 +225,10 @@ plt.axis("off")
 #Using the entire sound (not just eastern sound)
 array=embay_only
 
-gt=gdal.Open(paths[6]).GetGeoTransform()
+gt=embay_dist.GetGeoTransform()
 gt
 
-array
+print(array)
 
 #Setting negatives to nan
 array=np.where(array<0, np.nan, array)
@@ -264,11 +256,7 @@ g
 stop_lon = gt[0]+gt[1]*7809
 stop_lat= gt[3]+gt[5]*5745
 print(stop_lon, stop_lat)
-print(lon_max, lat_min)
-
-hmap = data.salem.get_map(cmap='viridis', countries="False")
-hmap.set_data(data)
-hmap.visualize()
+print(lon_min, lat_min)
 
 # +
 clat=(lat_max-lat_min)/2
@@ -281,29 +269,64 @@ zoom = 2
 #                str(zoom) + "&size = 400x400&key =" + api_key + "sensor = False")
 
 fig, ax = plt.subplots()
-g = GoogleVisibleMap(x=[lon_min, lon_max], y=[lat_min, lat_max],
+g = GoogleVisibleMap(x=[lon_min_z, lon_max_z], y=[lat_min_z, lat_max_z],
                      scale=2, size_x=400, size_y=400, # scale is for more details
                      maptype='satellite')
 ggl_img = g.get_vardata()
 #ax.imshow(ggl_img)
 
 sm = Map(g.grid, factor=1, countries=False)
+sm.set_rgb(ggl_img)
 
-data = xr.DataArray(array, dims=['lat', 'lon'], coords= {'lon': np.linspace(gt[0], stop_lon, 7809), 'lat': np.linspace(gt[1], stop_lat, 5745)})
+data = xr.DataArray(array, dims=['lat', 'lon'], coords= {'lon': np.linspace(gt[0], stop_lon, 7809), 'lat': np.linspace(gt[3], stop_lat, 5745)})
 sm.set_data(data)
 
-#sm.set_rgb(ggl_img)
+
 sm.visualize(ax=ax)
 
 plt.show()
 #ax.imshow()
+
+# +
+#Try 2
+plt.rcParams["figure.figsize"]=(30, 30)
+fig, ax = plt.subplots()
+g = GoogleVisibleMap(x=[lon_min_z, lon_max_z], y=[lat_min_z, lat_max_z],
+                     scale=2, size_x=325, size_y=125, # scale is for more details
+                     maptype='satellite')
+ggl_img = g.get_vardata()
+ggl_img[:, :, 3]=.75
+#ax.imshow(ggl_img)
+
+sm = Map(g.grid, factor=1, countries=False)
+sm.set_rgb(ggl_img)
+
+hmap = Map(g.grid, factor=1, countries=False, cmap="plasma")
+hmap.set_data(data)
+hmap.visualize()
+
+# data = xr.DataArray(array, dims=['lat', 'lon'], coords= {'lon': np.linspace(gt[0], stop_lon, 7809), 'lat': np.linspace(gt[3], stop_lat, 5745)})
+# sm.set_data(data)=''
+
+hmap.set_text(-71.968, 41.3425, "Mystic Harbor  ", fontsize=12, horizontalalignment="right")
+hmap.set_points(-71.968, 41.3425)
+
+hmap.set_text(-72.162, 41.309, "Jordan Cove\n", fontsize=12, horizontalalignment="left", verticalalignment="bottom")
+hmap.set_points(-72.162, 41.309)
+
+hmap.set_text(-72.145, 41.303, " White Point", fontsize=12)
+hmap.set_points(-72.145, 41.303)
+
+hmap.set_text(-72.181, 41.339, "  Niantic River", fontsize=12)
+hmap.set_points(-72.181, 41.339)
+
+hmap.set_text(-71.851, 41.326, "  Pawcatuck River", fontsize=12)
+hmap.set_points(-71.851, 41.326)
+
+sm.visualize(ax=ax)
+hmap.visualize(ax=ax)
+plt.show()
 # -
-
-
-
-
-
-
 
 # ## Reading csv and building model
 
@@ -355,7 +378,7 @@ def build_model(predictors, year, kernel, alpha):
     X_train=X_train / x_std
     
     #Constructing Process
-    gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha)
+    gaussian_process = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=15, alpha=alpha, optimizer=None)
 
 
     #Training Process
@@ -520,48 +543,103 @@ else:
 #Graphing Params
 plt.rcParams["figure.figsize"]=(30, 15)
 
+from salem import DataLevels
+dl=DataLevels()
+
 # +
 #Graphing selected days above
 
 #Making Figures
-hfig, hax =plt.subplots(len(years), len(display_days), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
-efig, eax =plt.subplots(len(years), len(display_days), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
+hfig, hax =plt.subplots(len(years), len(display_days), layout="tight")
+efig, eax =plt.subplots(len(years), len(display_days), layout="tight")
+
+#Visualization Params
+bottom=.15
+top=.75
+
+#Getting same basemap for all figs
+fig, ax = plt.subplots()
+g = GoogleVisibleMap(x=[lon_min_z, lon_max_z], y=[lat_min_z, lat_max_z],
+                     scale=2, size_x=325, size_y=125, # scale is for more details
+                     maptype='satellite')
+ggl_img = g.get_vardata()
+ggl_img[:, :, 3]=.5
 
 #Plotting
 for i, year in enumerate(years):
     for j, day in enumerate(display_days.values()):     
-                error, hmap = model_output(year, stride, models[year], ymeans[year], day)
+                error, means = model_output(year, stride, models[year], ymeans[year], day)
                 
-                #Visualization Params
-                bottom=.15
-                top=.6
-                height=hmap.shape[0]
-                width=hmap.shape[1]
+                #Predictions
+                
+                data = xr.DataArray(means, dims=['lat', 'lon'], coords= {'lon': np.linspace(gt[0], stop_lon, 7809)[::stride], 'lat': np.linspace(gt[3], stop_lat, 5745)[::stride]})
+                sm.set_data(data)
 
-                #hmap plot
-                him = hax[i, j].imshow(hmap[int(bottom*height):int(top*height), :], vmin=20, vmax=26)
-                hax[i, j].set_title(list(display_days.keys())[j] + " " + str(year), fontsize=18)
+                sm = Map(g.grid, factor=1, countries=False)
+                sm.set_rgb(ggl_img)
+
+                hmap = Map(g.grid, factor=1, countries=False, cmap="plasma", vmin=19, vmax=27, extend="neither")
+                hmap.set_data(data)
+ 
+                hmap.set_text(-71.968, 41.3425, "Mystic Harbor  ", fontsize=12, horizontalalignment="right")
+                hmap.set_points(-71.968, 41.3425)
+
+                hmap.set_text(-72.162, 41.309, "Jordan Cove\n", fontsize=12, horizontalalignment="left", verticalalignment="bottom")
+                hmap.set_points(-72.162, 41.309)
+
+                hmap.set_text(-72.145, 41.303, " White Point", fontsize=12)
+                hmap.set_points(-72.145, 41.303)
+
+                hmap.set_text(-72.181, 41.339, "  Niantic River", fontsize=12)
+                hmap.set_points(-72.181, 41.339)
+
+                hmap.set_text(-71.851, 41.326, "  Pawcatuck River", fontsize=12)
+                hmap.set_points(-71.851, 41.326)
                 
-                #error plot
-                eim = eax[i, j].imshow(error[int(bottom*height):int(top*height), :], vmin=0, vmax=1.2)
-                eax[i, j].set_title(list(display_days.keys())[j] + " " + str(year), fontsize=18)
+                sm.visualize(ax=hax[i, j])
+                hmap.visualize(ax=hax[i, j])
                 
+                letters= ["a)", "b)", "c)", "d)", "e)", "f)", "g)", "h)", "i)", "j)"]
+                number=2*i+j
+                hax[i, j].set_title(letters[number] + " " + list(display_days.keys())[j] + ", " + str(year), fontsize=24, loc="left")
+
+                #Error
+                
+                data = xr.DataArray(error, dims=['lat', 'lon'], coords= {'lon': np.linspace(gt[0], stop_lon, 7809)[::stride], 'lat': np.linspace(gt[3], stop_lat, 5745)[::stride]})
+                sm.set_data(data)
+
+                sm = Map(g.grid, factor=1, countries=False)
+                sm.set_rgb(ggl_img)
+        
+                hmap = Map(g.grid, factor=1, countries=False, cmap="plasma", vmin=0, vmax=2.5, extend="neither")
+                hmap.set_data(data)
+
+                hmap.set_text(-71.968, 41.3425, "Mystic Harbor  ", fontsize=12, horizontalalignment="right")
+                hmap.set_points(-71.968, 41.3425)
+
+                hmap.set_text(-72.162, 41.309, "Jordan Cove\n", fontsize=12, horizontalalignment="left", verticalalignment="bottom")
+                hmap.set_points(-72.162, 41.309)
+
+                hmap.set_text(-72.145, 41.303, " White Point", fontsize=12)
+                hmap.set_points(-72.145, 41.303)
+
+                hmap.set_text(-72.181, 41.339, "  Niantic River", fontsize=12)
+                hmap.set_points(-72.181, 41.339)
+
+                hmap.set_text(-71.851, 41.326, "  Pawcatuck River", fontsize=12)
+                hmap.set_points(-71.851, 41.326)
+                
+                sm.visualize(ax=eax[i, j])
+                hmap.visualize(ax=eax[i, j])                
+                                
+                eax[i, j].set_title(list(display_days.keys())[j] + ", " + str(year), fontsize=18)
+
 #Axes off
 [ax.set_axis_off() for ax in hax.ravel()]
 [ax.set_axis_off() for ax in eax.ravel()]
 
-#hmap cbar
-cax = hfig.add_axes([0.1,0.05,0.8,0.03])
-cbar = hfig.colorbar(him, cax=cax, orientation='horizontal')
-cbar.set_label('Deg C', fontsize=24)
-cbar.ax.tick_params(labelsize=24)
-
-#error cbar
-cax = efig.add_axes([0.1,0.05,0.8,0.03])
-cbar = efig.colorbar(eim, cax=cax, orientation='horizontal')
-cbar.set_label('Standard Deviation in Deg C', fontsize=24)
-hfig.suptitle("Figure 7: Gaussian Process-Predicted Temperature in Eastern Sound Embayments", fontsize=32)
-cbar.ax.tick_params(labelsize=24)
+# hfig.tight_layout(pad=15)
+# efig.tight_layout(pad=15)
 
 hfig.savefig("Graphs/June_Heatmaps/ES_Heatmaps.png", bbox_inches='tight')
 hfig.savefig("Figures_for_paper/fig7a.png", bbox_inches='tight')
@@ -570,15 +648,69 @@ efig.savefig("Graphs/June_Heatmaps/ES_Dependent_Errors.png", bbox_inches='tight'
 efig.savefig("Figures_for_paper/fig7b.png")
 
 plt.show()
+
+# +
+#Blow-up of one date
+
+plt.rcParams["figure.figsize"]=(30, 30)
+
+#Data params
+year = 2021
+day = 227
+
+#Visualization Params
+bottom=.15
+top=.75
+
+error, means = model_output(year, stride, models[year], ymeans[year], day)
+
+fig, ax = plt.subplots()
+g = GoogleVisibleMap(x=[lon_min_z, lon_max_z], y=[lat_min_z, lat_max_z],
+                     scale=2, size_x=325, size_y=125, # scale is for more details
+                     maptype='satellite')
+ggl_img = g.get_vardata()
+ggl_img[:, :, 3]=.75
+
+#ax.imshow(ggl_img)
+
+data = xr.DataArray(means, dims=['lat', 'lon'], coords= {'lon': np.linspace(gt[0], stop_lon, 7809)[::stride], 'lat': np.linspace(gt[3], stop_lat, 5745)[::stride]})
+sm.set_data(data)
+
+sm = Map(g.grid, factor=1, countries=False)
+sm.set_rgb(ggl_img)
+
+hmap = Map(g.grid, factor=1, countries=False, cmap="plasma", vmin=19, vmax=27)
+hmap.set_data(data)
+
+hmap.set_text(-71.968, 41.3425, "Mystic Harbor  ", fontsize=18, horizontalalignment="right")
+hmap.set_points(-71.968, 41.3425)
+
+hmap.set_text(-72.162, 41.309, "Jordan Cove\n", fontsize=18, horizontalalignment="left", verticalalignment="bottom")
+hmap.set_points(-72.162, 41.309)
+
+hmap.set_text(-72.145, 41.303, " White Point", fontsize=18)
+hmap.set_points(-72.145, 41.303)
+
+hmap.set_text(-72.181, 41.339, "  Niantic River", fontsize=18)
+hmap.set_points(-72.181, 41.339)
+
+hmap.set_text(-71.851, 41.326, "  Pawcatuck River", fontsize=18)
+hmap.set_points(-71.851, 41.326)
+
+sm.visualize(ax=ax)
+hmap.visualize(ax=ax, addcbar=False)
+
+ax.tick_params(labelsize="xx-large")
+#ax.set_title(list(display_days.keys())[j] + ", " + str(year), fontsize=18)
+
+cbar=fig.colorbar(plt.cm.ScalarMappable(norm= mpl.colors.Normalize(vmin=19, vmax=27), cmap="plasma"), ax=ax, fraction = .0171)
+cbar.ax.tick_params(labelsize="xx-large")
+
+plt.show()
 # -
 
-
-# ## Summer Averages
-
 #Params for graphs of thresholds and summer averages
-thresholds = [20, 25]
-stride =5
-days=range(182, 244)
+days=range(152, 275)
 avg_hmaps= {}
 thresh_hmaps={}
 
@@ -606,90 +738,10 @@ for i, year in enumerate(years):
     cbar.ax.tick_params(labelsize=24)
     plt.axis("off")
     plt.savefig("Graphs/June_Heatmaps/ES_Summer_Average_" + str(year) + ".png")
-    plt.show()
+    #plt.show()
     
 # -
 
-
-# ## Days Over Thresholds
-
-# +
-#Graphing 23 specifically
-thresholds = [23]
-
-#Days over Chosen Threshold(s)
-plt.rcParams["figure.figsize"]=(60, 60)
-
-
-#Making Figures
-hfig, hax =plt.subplots(len(years), len(thresholds), gridspec_kw={'wspace':0, 'hspace':0}, squeeze=True)
-
-#Plotting
-for i, year in enumerate(years):
-    for j, thresh in enumerate(thresholds):
-        total = np.zeros(1)
-        for day in  days:
-            error, hmap = model_output(year, stride, models[year], ymeans[year], day)
-
-            #Establishing threshold as the cut
-            over = np.where(hmap>thresh, 1, 0)
-
-            #Readding nans for better visualization
-            over=np.where(np.isnan(hmap), np.nan, over)
-
-            if len(total)>1:
-                total += over
-            else:
-                total = over
-        him = hax[i].imshow(total)
-        hax[i].set_title("Days over Threshold of " + str(thresh) + " degrees (C), " + str(year), fontsize=24)
-        
-        thresh_hmaps[str(year)+ "_" + str(thresh)] = total
-        
-cax = hfig.add_axes([0.1,0.05,0.8,0.03])
-cbar = hfig.colorbar(him, cax=cax, orientation='horizontal')
-cbar.set_label('Count of Days')
-cbar.ax.tick_params(labelsize=24)
-[ax.set_axis_off() for ax in hax.ravel()]
-plt.savefig("Graphs/June_Heatmaps/ES_Days_over_Thresholds.png")
-plt.show()
-# -
-
-
-thresh_hmaps
-
-# ## Outputting TIFFs
-
-# ### Summer Averages
-
-new_gt=(gt[0], gt[1]*stride, gt[2], gt[3], gt[4], gt[5]*stride)
-new_gt
-
-years = [2019, 2020, 2021]
-for year in years:
-    #Downloading geotiff of model
-    driver = gdal.GetDriverByName("GTiff")
-    driver.Register()
-    name = paths[7] + "Final_Temperature_Model_Summer_Average_" + str(year) + ".tif"
-    outds = driver.Create(name, xsize=avg_hmaps[year].shape[1], ysize=avg_hmaps[year].shape[0], bands=1, eType=gdal.GDT_Float32)
-    outds.SetGeoTransform(new_gt)
-    outds.SetProjection(proj)
-    outband = outds.GetRasterBand(1)
-    outband.WriteArray(avg_hmaps[year])
-    outband.SetNoDataValue(np.nan)
-    outband.FlushCache()
-    outband=None
-    outds=None
-
-#Testing saved geotiff
-name = paths[7] + "Final_Temperature_Model_Summer_Average_2021.tif"
-test=gdal.Open(name)
-band=test.GetRasterBand(1)
-new_array=band.ReadAsArray()
-plt.imshow(array)
-
-gt=test.GetGeoTransform()
-gt
 
 # # Updating EHSI
 
@@ -773,31 +825,27 @@ print(avg_temp["embay_dist"])
 #Aggregating CTDEEP idw temperatures
 avg_temp=avg_temp["interpolated"].values.reshape(grid_shape)
 
-display =plt.imshow(avg_temp)
-plt.axis("off")
-cbar = plt.colorbar(display, location="right", shrink=.75)
-cbar.set_label('Temperature (C)', rotation=270, fontsize=18, labelpad=30)
-cbar.ax.tick_params(labelsize=18)
-plt.title("Figure 5: Inverse Distance Weighted CT DEEP temperature data in Eastern LIS", fontsize=24)
-plt.savefig("Figures_for_paper/fig4.png")
-
 bins=[0, 21, 21.4, 21.9, 22.3, 22.8, 23.2, 23.7, 24.1, 24.6, 25, 100]
 
+# +
 #Reclassifying
 reclass1=np.digitize(avg_temp, bins, right=False)
 reclass1=10-(reclass1-1)
 reclass1=np.where(~np.isnan(avg_temp), reclass1, np.nan)
-display = plt.imshow(reclass1, vmin=0, vmax=10)
-cbar = plt.colorbar(display, location="right", shrink=.75)
-cbar.set_label('Temperature Score (Open Sound Model)', rotation=270, fontsize=18, labelpad=30)
-cbar.ax.tick_params(labelsize=18)
-plt.axis("off")
-plt.tight_layout()
+
+# display = plt.imshow(reclass1, vmin=0, vmax=10)
+# cbar = plt.colorbar(display, location="right", shrink=.75)
+# cbar.set_label('Temperature Score (Open Sound Model)', rotation=270, fontsize=18, labelpad=30)
+# cbar.ax.tick_params(labelsize=18)
+# plt.axis("off")
+# plt.tight_layout()
+# -
 
 # ## New Temperature Component
 
 years=[2019, 2020, 2021]
 
+# +
 #Averaging summer average heatmaps from 2019 through 2021
 avg_temp2= np.zeros(avg_hmaps[years[0]].shape)
 for key in avg_hmaps.keys():
@@ -805,13 +853,111 @@ for key in avg_hmaps.keys():
     hmap=avg_hmaps[key]
     avg_temp2+=avg_hmaps[key]
 avg_temp2=avg_temp2/len(avg_hmaps.keys())
-display = plt.imshow(avg_temp2)
-cbar = plt.colorbar(display, location="right", shrink=.75)
-cbar.set_label('Temperature', rotation=270, fontsize=18, labelpad=30)
-cbar.ax.tick_params(labelsize=18)
-plt.title("GP-Predicted Temperature in LIS Embayments (2019 through 2021)", fontsize=24)
-plt.axis("off")
-plt.tight_layout()
+
+#Mapping (redundant)
+
+# display = plt.imshow(avg_temp2)
+# cbar = plt.colorbar(display, location="right", shrink=.75)
+# cbar.set_label('Temperature', rotation=270, fontsize=18, labelpad=30)
+# cbar.ax.tick_params(labelsize=18)
+# plt.title("GP-Predicted Temperature in LIS Embayments (2019 through 2021)", fontsize=24)
+# plt.axis("off")
+# plt.tight_layout()
+
+# +
+#Side by side CTDEEP w2019-2021 avg with GP 2019-2021 avg
+plt.rcParams["figure.figsize"]=(30, 25)
+
+#CTDEEP
+
+fig, ax = plt.subplots(2, layout="constrained")
+g = GoogleVisibleMap(x=[lon_min_z, lon_max_z], y=[lat_min_z, lat_max_z],
+                     scale=2, size_x=325, size_y=125, # scale is for more details
+                     maptype='satellite')
+ggl_img = g.get_vardata()
+ggl_img[:, :, 3]=.5
+#dl = DataLevels(vmin=19.4, vmax=20.8)
+
+#ax.imshow(ggl_img)
+
+data = xr.DataArray(avg_temp, dims=['lat', 'lon'], coords= {'lon': np.linspace(gt[0], stop_lon, 7809)[::stride], 'lat': np.linspace(gt[3], stop_lat, 5745)[::stride]})
+sm.set_data(data)
+
+sm = Map(g.grid, factor=1, countries=False)
+sm.set_rgb(ggl_img)
+
+hmap = Map(g.grid, factor=1, countries=False, cmap="plasma", vmin=19, vmax=27)
+hmap.set_data(data)
+
+ax[0].tick_params(labelsize=36)
+
+hmap.set_text(-71.968, 41.3425, "Mystic Harbor  ", fontsize=18, horizontalalignment="right")
+hmap.set_points(-71.968, 41.3425)
+
+hmap.set_text(-72.162, 41.309, "Jordan Cove\n", fontsize=18, horizontalalignment="left", verticalalignment="bottom")
+hmap.set_points(-72.162, 41.309)
+
+hmap.set_text(-72.145, 41.303, " White Point", fontsize=18)
+hmap.set_points(-72.145, 41.303)
+
+hmap.set_text(-72.181, 41.339, "  Niantic River", fontsize=18)
+hmap.set_points(-72.181, 41.339)
+
+hmap.set_text(-71.851, 41.326, "  Pawcatuck River", fontsize=18)
+hmap.set_points(-71.851, 41.326)
+
+sm.visualize(ax=ax[0])
+hmap.visualize(addcbar=False, ax=ax[0])
+
+#GP
+
+g = GoogleVisibleMap(x=[lon_min_z, lon_max_z], y=[lat_min_z, lat_max_z],
+                     scale=2, size_x=325, size_y=125, # scale is for more details
+                     maptype='satellite')
+ggl_img = g.get_vardata()
+ggl_img[:, :, 3]=.75
+
+#ax.imshow(ggl_img)
+
+data = xr.DataArray(avg_temp2, dims=['lat', 'lon'], coords= {'lon': np.linspace(gt[0], stop_lon, 7809)[::stride], 'lat': np.linspace(gt[3], stop_lat, 5745)[::stride]})
+sm.set_data(data)
+
+sm = Map(g.grid, factor=1, countries=False)
+sm.set_rgb(ggl_img)
+
+hmap = Map(g.grid, factor=1, countries=False, cmap="plasma", vmin=19, vmax=27)
+hmap.set_data(data)
+
+hmap.set_text(-71.968, 41.3425, "Mystic Harbor  ", fontsize=18, horizontalalignment="right")
+hmap.set_points(-71.968, 41.3425)
+
+hmap.set_text(-72.162, 41.309, "Jordan Cove\n", fontsize=18, horizontalalignment="left", verticalalignment="bottom")
+hmap.set_points(-72.162, 41.309)
+
+hmap.set_text(-72.145, 41.303, " White Point", fontsize=18)
+hmap.set_points(-72.145, 41.303)
+
+hmap.set_text(-72.181, 41.339, "  Niantic River", fontsize=18)
+hmap.set_points(-72.181, 41.339)
+
+hmap.set_text(-71.851, 41.326, "  Pawcatuck River", fontsize=18)
+hmap.set_points(-71.851, 41.326)
+
+sm.visualize(ax=ax[1])
+hmap.visualize(ax=ax[1], addcbar=False)
+
+ax[1].tick_params(labelsize=36)
+#ax.set_title(list(display_days.keys())[j] + ", " + str(year), fontsize=18)
+
+cax = fig.add_axes([0.1, -.1, 0.8, 0.05])
+cbar=fig.colorbar(plt.cm.ScalarMappable(norm= mpl.colors.Normalize(vmin=19, vmax=27), cmap="plasma"), cax=cax, orientation="horizontal")
+cbar.ax.tick_params(labelsize=36)
+
+ax[0].set_title("a) 2009-2011 Avg Temp (IDW)", fontsize=36, loc="left")
+ax[1].set_title("b) 2019-2021 Avg Temp (GP)", fontsize=36, loc="left")
+
+plt.show()
+# -
 
 bins=[0, 21, 21.4, 21.9, 22.3, 22.8, 23.2, 23.7, 24.1, 24.6, 25, 100]
 
@@ -833,6 +979,7 @@ plt.tight_layout()
 
 plt.rcParams["figure.figsize"]=(30, 20)
 
+height=hmap.shape[0]
 hmap=avg_temp-avg_temp2
 display=plt.imshow(hmap[int(.15*height):int(.6*height), :])
 cbar = plt.colorbar(display, location="bottom", shrink=.75)
@@ -841,19 +988,67 @@ cbar.ax.tick_params(labelsize=18)
 plt.axis("off")
 plt.title("Figure 8: GP Temperature Model and CTDEEP IDW comparison", fontsize=24)
 plt.savefig(paths[7] + "EHSI_open_sound_vs_embayment_bias_graph_raw.png", )
-plt.show()
+#plt.show()
 
 # ### Reclassified Difference
 
-plt.rcParams["figure.figsize"]=(30, 20)
+plt.rcParams["figure.figsize"]=(30, 30)
 
-hmap=reclass2-reclass1
-display=plt.imshow(hmap[int(.15*height):int(.6*height), :], cmap="seismic", vmin=-6, vmax=6)
-cbar = plt.colorbar(display, location="bottom", shrink=.75)
-cbar.set_label('New Model Increase in EHSI Temp. Component', fontsize=18, labelpad=30)
+# +
+hmap=2*(reclass2-reclass1)
+
+vmin=19.4
+vmax=20.8
+
+fig, ax = plt.subplots()
+g = GoogleVisibleMap(x=[lon_min_z, lon_max_z], y=[lat_min_z, lat_max_z],
+                     scale=2, size_x=325, size_y=125, # scale is for more details
+                     maptype='satellite')
+ggl_img = g.get_vardata()
+ggl_img[:, :, 3]=.5
+#dl = DataLevels(vmin=19.4, vmax=20.8)
+
+#ax.imshow(ggl_img)
+
+data = xr.DataArray(hmap, dims=['lat', 'lon'], coords= {'lon': np.linspace(gt[0], stop_lon, 7809)[::stride], 'lat': np.linspace(gt[3], stop_lat, 5745)[::stride]})
+sm.set_data(data)
+
+sm = Map(g.grid, factor=1, countries=False)
+sm.set_rgb(ggl_img)
+
+hmap = Map(g.grid, factor=1, countries=False, cmap="plasma", vmin=-20, vmax=0)
+hmap.set_data(data)
+
+ax.tick_params(labelsize="xx-large")
+
+hmap.set_text(-71.968, 41.3425, "Mystic Harbor  ", fontsize=18, horizontalalignment="right")
+hmap.set_points(-71.968, 41.3425)
+
+hmap.set_text(-72.162, 41.309, "Jordan Cove\n", fontsize=18, horizontalalignment="left", verticalalignment="bottom")
+hmap.set_points(-72.162, 41.309)
+
+hmap.set_text(-72.145, 41.303, " White Point", fontsize=18)
+hmap.set_points(-72.145, 41.303)
+
+hmap.set_text(-72.181, 41.339, "  Niantic River", fontsize=18)
+hmap.set_points(-72.181, 41.339)
+
+hmap.set_text(-71.851, 41.326, "  Pawcatuck River", fontsize=18)
+hmap.set_points(-71.851, 41.326)
+
+sm.visualize()
+hmap.visualize(addcbar=False)
+
+
+cbar=fig.colorbar(plt.cm.ScalarMappable(norm= mpl.colors.Normalize(vmin=-20, vmax=0), cmap="plasma"), ax=ax, orientation="vertical", fraction=.0171)
+cbar.set_label('New Model Increase (+)/Decrease (-) in EHSI Temp. Component', fontsize=18, labelpad=30)
 cbar.ax.tick_params(labelsize=18)
-plt.axis("off")
-#plt.title("Figure 8: GP Temperature Model and CTDEEP IDW comparison", fontsize=24)
-plt.savefig(paths[7] + "EHSI_open_sound_vs_embayment_bias_graph.png", )
-plt.savefig("Figures_for_paper/fig8.png", bbox_inches='tight')
-plt.show()
+
+#plt.axis("off")
+# plt.title("Figure 8: GP Temperature Model and CTDEEP IDW comparison", fontsize=24)
+# plt.savefig(paths[7] + "EHSI_open_sound_vs_embayment_bias_graph.png", )
+# plt.savefig("Figures_for_paper/fig8.png", bbox_inches='tight')
+# plt.show()
+# -
+
+

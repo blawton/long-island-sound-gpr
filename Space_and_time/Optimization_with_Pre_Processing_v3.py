@@ -12,6 +12,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import KNeighborsRegressor
 import matplotlib.pyplot as plt
 import os
 import datetime
@@ -39,25 +40,21 @@ import os
 inputs={}
 
 #Input of Aggregate Data with embay_dist attached (output_1 of Geostatistics_Workbook..._time)
-inputs[1]="Data/Space_and_time_agg/agg_daily_morning_coastal_features_4_22_2023.csv"
+inputs[1]= "Data/Space_and_time_agg/agg_daily_morning_coastal_features_6_21_2023.csv"
 
 for path in inputs.values():
     assert(os.path.exists(path))
 
 # +
 #Global Params
+es=False
+ja=True
 
 folds=5
 
 years=[2019, 2020, 2021]
 
 station_var=["Station ID"]
-
-ind_var=["Longitude", "Latitude", "Day", "embay_dist"]
-
-dep_var = ["Temperature (C)"]
-
-predictors=len(ind_var)
 
 #scores to include in CV scoring (as tuple):
 scores = ("r2", "neg_root_mean_squared_error")
@@ -71,10 +68,21 @@ nro=15
 #In this file, kernel, lsb, and noise_alpha are set
 lsb=(1e-5, 1e5)
 
-kernels=[1*RBF([1]*predictors, length_scale_bounds=lsb) + 1*RationalQuadratic(length_scale_bounds=lsb),
-         1 * Matern([1]*predictors, nu=1.5, length_scale_bounds=lsb) + 1 * RationalQuadratic(length_scale_bounds=lsb),
-         1 * Matern([1]*predictors, nu=.5, length_scale_bounds=lsb) + 1 * RBF([1]*predictors, length_scale_bounds=lsb)
-        ]
+#Defining Eastern Sound Window (useful for visualizing cropped distance map)
+lon_min=-72.59
+lon_max=-71.81
+lat_min=40.97
+lat_max=41.54
+
+ind_var=["Longitude", "Latitude", "Day", "embay_dist"]
+
+dep_var = ["Temperature (C)"]
+
+predictors=len(ind_var)
+
+#Kernels from geostatistics prediction dashboard
+
+kernels=[1*RBF([1]*predictors, length_scale_bounds=lsb) + 1*RationalQuadratic(length_scale_bounds=lsb)]
 
 noise_alpha=.25
 # -
@@ -86,15 +94,18 @@ df=pd.read_csv(inputs[1], index_col=0)
 df.reset_index(inplace=True, drop=True)
 df.head()
 
-#Checking Dominion Stations to Make Sure they are in Vaudrey Embayment (C and NB)
-df.loc[df["Organization"]=="Dominion"]
+#Restricting to Proper Training Dataset
+if es:
+    df=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max)].copy()
+if ja:
+    df=df.loc[(df["Day"]<=244) & (df["Day"]>=182)]
 
-#Dropping nas (need to un-hardcord)
+#Dropping nas (need to un-hardcode)
 print(len(df))
 df.dropna(subset=["Station ID", "Longitude", "Latitude", "Day", "Temperature (C)", "Organization"], inplace=True)
 print(len(df))
 
-# # Running cross validation on pipeline
+# # Testing cross validation pipeline
 
 # In this notebook, it has been decided to run optimization with demeaned data based on previous observations of "Geostatistics_Workbook_version_2.1.2_time". This should not affect the rmse, and r^2 values can be interpreted accordingly
 
@@ -121,42 +132,7 @@ for year in years:
     pipe.fit(X, y)
     print(pipe.fit_transform(X, y))
 
-# +
-#Testing standardscaler
-CV_results={}
-CV_best_estimators={}
-
-gp = GaussianProcessRegressor(alpha=noise_alpha, n_restarts_optimizer=nro)
-
-pipe = Pipeline([('scaler', StandardScaler()),
-                 ('model', gp)])
-
-parameters = {
-    "model__kernel": kernels
-}
-
-clf = GridSearchCV(pipe, param_grid=parameters, cv=GroupKFold(n_splits=folds), n_jobs=-1, scoring=scores, refit=priority_score)
-    
-for year in years:
-    #Selecting year
-    data = df.loc[df["Year"]==year, station_var+ind_var+dep_var].values
-    
-    #Splitting into groups, indep, and dep vars
-    groups, X, y = data[:, 0], data[:, 1:predictors+1], data[:, -1]
-
-    #De-meaning output
-    y -= np.mean(y)
-    
-    #Fitting cross validation
-    clf.fit(X, y, groups=groups)
-    
-    CV_results[year] = clf.cv_results_
-    CV_best_estimators[year] =clf.best_estimator_
-    
-    #Saving to file
-    pd.DataFrame(CV_results[year]).to_csv("Results/Optimization_with_Pre_Processing_results_" + str(year)+ ".csv")
-    
-    print(year)
+# # Gaussian Process
 
 # +
 #Block for iteration through years
@@ -191,7 +167,46 @@ for year in years:
     CV_best_estimators[year] =clf.best_estimator_
     
     #Saving to file
-    pd.DataFrame(CV_results[year]).to_csv("Results/Optimization_with_Pre_Processing_results_" + str(year)+ ".csv")
+    pd.DataFrame(CV_results[year]).to_csv("Results/Optimization_with_Pre_Processing_results_lis_ja_" + str(year)+ ".csv")
+    
+    print(year)
+# -
+
+# # Inverse Distance Weighting (KNN)
+
+# +
+#Comparison to k nearest neighbors
+
+#Block for iteration through years
+CV_results={}
+CV_best_estimators={}
+
+knn = KNeighborsRegressor(weights="distance", n_neighbors=15, p=2)
+
+pipe = Pipeline([('scaler', StandardScaler()),
+                 ('model', knn)])
+parameters = {}
+
+clf = GridSearchCV(pipe, parameters, cv=GroupKFold(n_splits=folds), n_jobs=-1, scoring=scores, refit=priority_score)
+    
+for year in years:
+    #Selecting year
+    data = df.loc[df["Year"]==year, station_var+ind_var+dep_var].values
+    
+    #Splitting into groups, indep, and dep vars
+    groups, X, y = data[:, 0], data[:, 1:predictors+1], data[:, -1]
+
+    #De-meaning output
+    y -= np.mean(y)
+    
+    #Fitting cross validation
+    clf.fit(X, y, groups=groups)
+    
+    CV_results[year] = clf.cv_results_
+    CV_best_estimators[year] =clf.best_estimator_
+    
+    #Saving to file
+    pd.DataFrame(CV_results[year]).to_csv("Results/Optimization_with_Pre_Processing_results_lis_ja_knn_" + str(year)+ ".csv")
     
     print(year)
 # -
@@ -199,5 +214,7 @@ for year in years:
 pd.DataFrame(CV_results[2020])
 
 clf.predict([X[0,:]])
+
+CV_best_estimators[year]
 
 

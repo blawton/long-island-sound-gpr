@@ -13,6 +13,7 @@ from scipy.interpolate import NearestNDInterpolator
 import matplotlib as mpl
 import os
 import matplotlib.ticker as mtick
+import requests
 
 #gdal imports
 from osgeo import gdal, gdalconst
@@ -168,15 +169,26 @@ if es==True:
 
 # # Data summaries
 
-#Summary of df by orgs
+# +
+#Summary of df by cont/non-cont.
 working=df.drop_duplicates(["Station ID", "Year"]).copy()
 working=working.loc[working["Year"].isin(range(2019, 2022))]
-working.replace({"Dominion": "Dominion Power Plant", "EPA_FISM": "FISM"}, inplace=True)
-working = working.groupby(["Year", "Organization"])["Station ID"].count()
+
+#Grouping by data type
+working["Category"]=""
+working.loc[working["Organization"].isin(cont_orgs), "Category"]="Continuous"
+working.loc[~working["Organization"].isin(cont_orgs), "Category"]="Discrete"
+
+#Fixing Names
+working = working.groupby(["Year", "Category"])["Station ID"].count()
 working=pd.DataFrame(working)
+
 working.rename(columns={"Station ID":"Number of Stations"}, inplace=True)
-#working.to_csv("Figures_for_Paper/tab1.csv")
+working=working.unstack(level=1)
+
+working.to_csv("Figures_for_Paper/tab1.csv")
 working
+# -
 
 #Non-continuous data frequencies
 working=df.loc[~df["Organization"].isin(cont_orgs)]
@@ -186,6 +198,8 @@ working.rename(columns={"Day":"Average Number Measurements/Station"}, inplace=Tr
 working.reset_index(inplace=True)
 working=working.groupby(["Year", "Organization"]).mean()
 working
+
+df.loc[df["Station ID"].str[0:11]==("CFE-STS-NIR")]
 
 df.groupby(["Year", "Organization"]).mean()
 
@@ -279,6 +293,9 @@ def build_model(predictors, year, kernel, alpha):
 #Graphing param
 plt.rcParams["figure.figsize"]=(30, 25)
 
+#Day range - make sure this matches linear interpolation above
+days=range(152, 275)
+
 # +
 #Params
 predictors=4
@@ -287,11 +304,8 @@ stride=20
 lsb=(1e-5, 1e5)
 kernel = 1 * RBF([1]*predictors, length_scale_bounds=lsb) + 1 * RationalQuadratic(length_scale_bounds=lsb)
 years = [2019, 2020, 2021]
-thresholds = [20, 25]
 temp_limits = (19, 27)
 day_limits = (0, 50)
-#Make sure this matches linear interpolation above
-days=range(162, 269)
 #continuous monitoring "orgs"
 cont_orgs=["STS_Tier_II", "EPA_FISM", "USGS_Cont"]
 
@@ -323,13 +337,10 @@ if es:
         #Getting models and ymeans outputted
         models[year], ymeans[year], xmeans[year], xstds[year] = build_model(predictors, year, kernels_es[year], alpha)
         #print(models[year].kernel_)
-else:
-#Entire LISS model
-    for year in years:
-        #Getting models and ymeans outputted
-        models[year], ymeans[year] = build_model(predictors, year, kernels_liss[year], alpha)
-        print(models[year].kernel_)
 
+
+for year in years:
+    print(models[year].kernel_)
 
 # # Defining Functions to Use for CTDEEP idw
 
@@ -353,10 +364,11 @@ def interpolate_means(daily_data):
 
 # # CTDEEP IDW Bias and RMSE
 
+# ## Whole Sound July/August
+
 idw_test=whole_sound.loc[whole_sound["Year"].isin(years)]
 
 concat = interpolate_means(idw_test)
-concat.loc[concat["Day"].isin(range(210, 213))]
 
 # +
 #Limiting to days in July/August for comparability
@@ -373,17 +385,127 @@ mean_error.rename(columns={"Squared Error":"Root Mean Squared Error"}, inplace=T
 mean_error=pd.concat([mean_error, pd.DataFrame({"Root Mean Squared Error": mean_error.mean()})])
 mean_error.rename(index={"Root Mean Squared Error": "Intertemporal Mean"}, inplace=True)
 mean_error.index.name="Year"
+mean_error.to_csv("Results/CT_DEEP_Interpolation/RMSE_LIS_JA.csv")
 mean_error
 
 # +
 #Saving bias to csv
 bias=concat.groupby(["Station ID", "Year"]).mean()
 print(len(bias))
-concat.to_csv("Results/CT_DEEP_Interpolation_Bias.csv")
+concat.to_csv("Results/CT_DEEP_Interpolation/Bias_LIS_JA.csv")
+#print(bias.head())
+#mean_error
+
+bias.groupby(["Year"]).mean()
+# -
+
+# ## Whole Sound All Days
+
+idw_test=whole_sound.loc[whole_sound["Year"].isin(years)]
+
+concat = interpolate_means(idw_test)
+
+# +
+#Limiting to days in July/August for comparability
+rmse_range=range(152, 274)
+
+#RMSE and bias
+concat=concat.loc[concat["Day"].isin(rmse_range)].copy()
+concat["Bias"]=concat["interpolated"]-concat["Temperature (C)"]
+concat["Squared Error"]=np.square(concat["Bias"])
+mean_error=concat.groupby("Year").mean()["Squared Error"]
+mean_error=np.sqrt(mean_error)
+mean_error=pd.DataFrame(mean_error)
+mean_error.rename(columns={"Squared Error":"Root Mean Squared Error"}, inplace=True)
+mean_error=pd.concat([mean_error, pd.DataFrame({"Root Mean Squared Error": mean_error.mean()})])
+mean_error.rename(index={"Root Mean Squared Error": "Intertemporal Mean"}, inplace=True)
+mean_error.index.name="Year"
+mean_error.to_csv("Results/CT_DEEP_Interpolation/RMSE_LIS_152_274.csv")
+mean_error
+
+# +
+#Saving bias to csv
+bias=concat.groupby(["Station ID", "Year"]).mean()
+print(len(bias))
+concat.to_csv("Results/CT_DEEP_Interpolation/Bias_LIS_152_274.csv")
 print(bias.head())
 #mean_error
 
 bias.groupby(["Year"]).mean()
+# -
+
+# ## ES All Days
+
+idw_test=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max) & (df["Year"].isin(years))]
+
+concat = interpolate_means(idw_test)
+
+# +
+#Limiting to days in July/August for comparability
+rmse_range=range(152, 274)
+
+#RMSE and bias
+concat=concat.loc[concat["Day"].isin(rmse_range)].copy()
+concat["Bias"]=concat["interpolated"]-concat["Temperature (C)"]
+concat["Squared Error"]=np.square(concat["Bias"])
+mean_error=concat.groupby("Year").mean()["Squared Error"]
+mean_error=np.sqrt(mean_error)
+mean_error=pd.DataFrame(mean_error)
+mean_error.rename(columns={"Squared Error":"Root Mean Squared Error"}, inplace=True)
+mean_error=pd.concat([mean_error, pd.DataFrame({"Root Mean Squared Error": mean_error.mean()})])
+mean_error.rename(index={"Root Mean Squared Error": "Intertemporal Mean"}, inplace=True)
+mean_error.index.name="Year"
+mean_error.to_csv("Results/CT_DEEP_Interpolation/RMSE_ES_152_274.csv")
+mean_error
+
+# +
+#Saving bias to csv
+bias=concat.groupby(["Station ID", "Year"]).mean()
+print(len(bias))
+concat.to_csv("Results/CT_DEEP_Interpolation/Bias_ES_152_274.csv")
+print(bias.head())
+#mean_error
+
+bias.groupby(["Year"]).mean()
+# -
+
+# ## ES JA
+
+idw_test=df.loc[(df["Longitude"]>lon_min) & (df["Longitude"]<lon_max) & (df["Year"].isin(years))]
+
+concat = interpolate_means(idw_test)
+
+# +
+#Limiting to days in July/August for comparability
+rmse_range=range(182, 244)
+
+#RMSE and bias
+concat=concat.loc[concat["Day"].isin(rmse_range)].copy()
+concat["Bias"]=concat["interpolated"]-concat["Temperature (C)"]
+concat["Squared Error"]=np.square(concat["Bias"])
+mean_error=concat.groupby("Year").mean()["Squared Error"]
+mean_error=np.sqrt(mean_error)
+mean_error=pd.DataFrame(mean_error)
+mean_error.rename(columns={"Squared Error":"Root Mean Squared Error"}, inplace=True)
+mean_error=pd.concat([mean_error, pd.DataFrame({"Root Mean Squared Error": mean_error.mean()})])
+mean_error.rename(index={"Root Mean Squared Error": "Intertemporal Mean"}, inplace=True)
+mean_error.index.name="Year"
+mean_error.to_csv("Results/CT_DEEP_Interpolation/RMSE_ES_JA.csv")
+mean_error
+# -
+
+#Saving bias to csv
+pd.options.display.float_format = "{:.2f}".format
+bias=concat.groupby(["Station ID", "Year"]).mean()
+print(len(bias))
+concat.to_csv("Results/CT_DEEP_Interpolation/Bias_ES_JA.csv")
+#print(bias.head())
+#mean_error
+bias_results=bias[["Temperature (C)", "interpolated", "Bias"]].groupby(["Year"]).mean()
+bias_results.rename(columns={"Temperature (C)": "Temp Mean Across Stations (Deg C)", "interpolated":"Interpolated Temp Mean Across Stations (Deg C)", "Bias":"Interpolation Bias"}, inplace=True)
+bias_results
+
+# ## By station
 
 # +
 #Generating CTDEEP interpolated time series for each station within each year
@@ -525,6 +647,8 @@ plt.show()
 
 plt.rcParams["figure.figsize"]=(45, 20)
 
+thresholds = [23, 25]
+
 # +
 #Days over Chosen Threshold(s) box and whisker
 
@@ -602,9 +726,10 @@ for j, year in enumerate(years):
         #print(working.loc[working>70])
         
         hax[i, j].boxplot([ct_deep_thresh, reindexed, working], vert=0)
-        hax[i, j].set_yticklabels([ "IDW Model (Approach I)", "GP Model (Approach II)", "Data"], fontsize=22)
+        hax[i, j].set_yticklabels([ "Approach I", "Approach II", "Lin. Interp. Data"], fontsize=22)
         hax[i, j].set_xlabel("% of Days", fontsize=22)
-        hax[i, j].set_title("Pct Days over " + str(thresh) + " deg (C) Models vs. Data, " + str(year), fontsize=28)
+        hax[i, j].set_title(str(thresh) + " Deg (C) Thresh, " + str(year), fontsize=28)
+        hax[i, j].set_xlim(-5, 105)
         hax[i, j].xaxis.set_major_formatter(mtick.PercentFormatter())
         hax[i, j].tick_params(axis="both", which="major", labelsize=22)
         plt.tight_layout(pad=10)
@@ -633,7 +758,7 @@ plt.rcParams["figure.figsize"]=(30, 20)
 samples= 3
 
 # +
-#Script for generating samples
+#Script for generating samples (within each year because coordinates change)
 
 #Restricting to non-continuous data to see how GP fills in data
 working=df.loc[~df["Organization"].isin(cont_orgs)].copy()
@@ -642,14 +767,18 @@ working=df.loc[~df["Organization"].isin(cont_orgs)].copy()
 by_station=working.drop_duplicates(subset=["Station ID"]).copy()
 
 #Randomly sampling number of samples defined above
-by_station=by_station.sample(samples, axis=0)
-by_station.drop("Day", axis=1, inplace=True)
+stations=by_station.sample(samples, axis=0)
+stations=list(stations["Station ID"])
 #print(by_station)
+agg=pd.DataFrame()
 
-#Adding each day in range for every station samples
-day_list=pd.DataFrame(days, columns=["Day"])
-cross = by_station.merge(day_list, how = "cross")
-#print(cross)
+for year in years:
+    by_station=df.loc[(df["Station ID"].isin(stations)) & (df["Year"]==year)].drop_duplicates(subset=["Station ID"])
+    by_station.drop("Day", axis=1, inplace=True)
+    #Adding each day in range for every station samples
+    day_list=pd.DataFrame(days, columns=["Day"])
+    cross = by_station.merge(day_list, how = "cross")
+    agg=pd.concat([agg, cross])
 
 # +
 #Plots
@@ -661,8 +790,9 @@ for j, year in enumerate(years):
 #Generating GP time series for randomly selected stations
 
     #Merging other variables with station and days
-    reindexed=cross[indep_var].copy()
-
+    year_data=agg.loc[agg["Year"]==year].copy()
+    reindexed=year_data[indep_var].copy()
+    
     #Normalizing predictors
     X_pred = reindexed.values
     X_pred=X_pred - xmeans[year]
@@ -676,16 +806,22 @@ for j, year in enumerate(years):
     
     #Adding modeled data back into predictors
     reindexed["Temperature (C)"]=y_pred
+    reindexed["Error"]=MSE
     #print(reindexed)
     
     #Adding back in station ID
-    reindexed["Station ID"]=cross["Station ID"]
+    reindexed["Station ID"]=year_data["Station ID"]
     #print(reindexed)
     
 #Plotting GP time series within each year
     for i, sta in enumerate(pd.unique(reindexed["Station ID"])):
         working=reindexed.loc[reindexed["Station ID"]==sta]
         ax[i, j].plot(working["Day"], working["Temperature (C)"])
+        ax[i, j].fill_between(working["Day"], 
+                              working["Temperature (C)"] - 1.96 * working["Error"],
+                              working["Temperature (C)"] + 1.96 * working["Error"],
+                              alpha=.25,
+                              label=r" GP 95% confidence interval")
         
 #Plotting ctdeep time series for station
     for i, sta in enumerate(pd.unique(reindexed["Station ID"])):
@@ -695,7 +831,7 @@ for j, year in enumerate(years):
 
 #Plotting original data with time series for comparison
         data = df.loc[(df["Year"]==year) & (df["Station ID"]==sta)].copy()
-        ax[i, j].scatter(data["Day"], data["Temperature (C)"], color="tab:orange")
+        ax[i, j].scatter(data["Day"], data["Temperature (C)"], s=150, color="tab:purple")
         
 #Formatting
         ax[i, j].set_title(sta + " " + str(year), fontsize=24)
@@ -703,14 +839,14 @@ for j, year in enumerate(years):
         ax[i, j].set_xlim([min(days), max(days)])
         ax[i, j].tick_params(axis="x", labelsize=22)
         ax[i, j].tick_params(axis="y", labelsize=22)
-        fig.legend(["Gaussian Process", "Inverse Distance Weighting", "Discrete Datapoints"],  prop={'size': 25}, bbox_to_anchor=[1.15, 1.05])
+        fig.legend(["Gaussian Process", "95% Confidence Interval", "Inverse Distance Weighting", "Discrete Datapoints"],  prop={'size': 25}, bbox_to_anchor=[1.15, 1.05])
         
-fig.suptitle("Fig 6a: Synthesizing Continuous Time Series from Discrete Datapoints (Eastern Sound Hyperparameters)", fontsize=32)
+#fig.suptitle("Fig 6a: Synthesizing Continuous Time Series from Discrete Datapoints (Eastern Sound Hyperparameters)", fontsize=32)
 fig.supxlabel("Day of the Year", fontsize=24)
 fig.supylabel("Temperature (C)", fontsize=24)
 plt.tight_layout(pad= 5)
 
-plt.savefig("Figures_for_paper/fig6a.png", bbox_inches='tight')
+plt.savefig("Figures_for_paper/fig6.png", bbox_inches='tight')
 plt.show()
 # -
 for year in years:
@@ -760,10 +896,12 @@ keys=dict(zip(range(len(by_station)), "abc"))
 
 # +
 #Plots
+years=[2021]
+k=len(pd.unique(by_station["Station ID"]))
+fig, ax=plt.subplots(k)
 
 for i, sta in enumerate(pd.unique(by_station["Station ID"])):
     #Each ground truthed station gets its own plot
-    fig, ax=plt.subplots(len(years))
 
     for j, year in enumerate(years):
     
@@ -794,49 +932,42 @@ for i, sta in enumerate(pd.unique(by_station["Station ID"])):
         #print(reindexed)
 
 #Plotting time series within each year
-        ax[j].plot(reindexed["Day"], 
+        ax[i].plot(reindexed["Day"], 
                    reindexed["Temperature (C)"], label=sta + " Gaussian Process")
     
 #Plotting 95% confidence interval
-        ax[j].fill_between(reindexed["Day"], 
+        ax[i].fill_between(reindexed["Day"], 
                            reindexed["Temperature (C)"]-1.96*MSE, 
                            reindexed["Temperature (C)"]+1.96*MSE, 
                            alpha=.25, 
                            label=r" GP 95% confidence interval")
 
 
-        ax[j].set_title("Millstone Station " + sta + ", " + str(year) + " w/ Controls", fontsize=24)
+        ax[i].set_title("Station " + sta + ", " + str(year) + " w/ Controls", fontsize=32)
         
-#Plotting ct_deep_idw temp
-        working=gt_for_pred[year]
-        working["Year"]=year
-        working=interpolate_means(working)
-        working=working.loc[working["Station ID"]==sta]
-        ax[j].plot(working["Day"], working["interpolated"], label = sta + " CTDEEP IDW")
-    
+#Average SE of 95% confidence interval
+        print(MSE.mean())
 
         for k, control in enumerate(controls):
 #Plotting niantic_controls for comparison
             data = df.loc[(df["Year"]==year) & (df["Station ID"]==control)].copy()
-            ax[j].plot(data["Day"], data["Temperature (C)"], label=control)
-        
-#Adding legend to jth chart
-        ax[j].legend(bbox_to_anchor=[1.1, 1.05], fontsize=22)
+            ax[i].plot(data["Day"], data["Temperature (C)"], label=control)
     
 #Formatting all axes
         for axis in fig.get_axes():
             axis.set_ylim([15, 27])
             axis.set_xlim([min(days), max(days)])
-            axis.tick_params(axis="x", labelsize=22)
-            axis.tick_params(axis="y", labelsize=22)
+            axis.tick_params(axis="x", labelsize=32)
+            axis.tick_params(axis="y", labelsize=32)
     
-    fig.suptitle("Fig 4" + keys[i] + ": Synthesizing Continuous Time Series for Millstone Eelgrass Station " + str(sta), fontsize=32)
-    fig.supxlabel("Day of the Year", fontsize=24)
-    fig.supylabel("Temperature (C)", fontsize=24)
-    plt.tight_layout(pad= 5)
-
-    plt.savefig("Figures_for_paper/fig4" + keys[i] + ".png")
-    plt.show()
+#fig.suptitle("Fig 12: Synthesizing Continuous Time Series for Millstone Eelgrass Stations (2021)", fontsize=32)
+fig.supxlabel("Day of the Year", fontsize=32)
+fig.supylabel("Temperature (C)", fontsize=32)
+plt.tight_layout(pad= 5)
+handles, labels=ax[i].get_legend_handles_labels()
+fig.legend(handles, labels, prop={'size': 32}, bbox_to_anchor=[1.25, 1.05])
+plt.savefig("Figures_for_paper/fig12" + keys[i] + ".png")
+plt.show()
 # -
 
 # # Ground Truth at JC, WP, NR
@@ -864,7 +995,7 @@ for year in years:
     by_station=working.drop_duplicates(subset=["Station ID"])[["Station ID", "Year", "Latitude",  "Longitude", "embay_dist"]].copy()
 
     #Adding each day in range for every station samples
-    day_list=pd.DataFrame(gt_days, columns=["Day"])
+    day_list=pd.DataFrame(days, columns=["Day"])
     gt_for_pred[year] = by_station.merge(day_list, how = "cross")
     print(gt_for_pred[year])
     
@@ -879,13 +1010,10 @@ import scipy.stats as stats
 # +
 #params
 gt_path="Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv"
-gt_var="shootcount_demeaned"
+gt_var="ShootCount"
 
 #Days for trailing mean
-periods=[30, 60, 90]
-
-#Setting summer as time period for ground truthing of summer mean and days over thresh
-gt_days=range(162, 269)
+periods=[90]
 
 # +
 gt_data=pd.read_csv(gt_path, index_col=0)
@@ -933,6 +1061,9 @@ for year in years:
     working=interpolate_means(working)
     working.rename(columns={"interpolated":"idw_temp"}, inplace=True)
     
+    #Readding station var
+    working["Station ID"]=gt_for_pred[year]["Station ID"]
+    
     for n in periods:
         working["gp_temp_" + str(n)]=working["gp_temp"].rolling(n, min_periods=1).mean()
         working["idw_temp_" + str(n)]=working["idw_temp"].rolling(n, min_periods=1).mean()
@@ -962,7 +1093,7 @@ r2=pd.DataFrame(index=["R-Squared Value"])
 #Plots
 
 #Plotting data and regression line (gp)
-fig, ax = plt.subplots(len(periods))
+fig, ax = plt.subplots()
 
 for i, n in enumerate(periods):
     
@@ -970,13 +1101,14 @@ for i, n in enumerate(periods):
         working=comp.loc[comp["Station ID"]==sta]
 
         bars=errors.loc[errors["Station ID"]==sta, gt_var]
-        ax[i].errorbar(working["gp_temp_" + str(n)], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+        ax.errorbar(working["gp_temp_" + str(n)], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+    
+        ax.scatter(working["gp_temp_" + str(n)], working[gt_var], s=100)
 
-        ax[i].scatter(working["gp_temp_" + str(n)], working[gt_var], s=100)
-
-        ax[i].set_title("Demeaned Shootcount vs. Gaussian Process-Predicted Trailing " + str(n) + " Day Avg Temp.", fontsize=18)
-        ax[i].set_ylabel("Demeaned Shootcount", fontsize=18)
-        ax[i].set_xlabel(str(n) + " Day Trailing Temp Avg", fontsize=18)
+        #ax.set_title("Gaussian Process " + str(n) + " Day Trailing Avg Temp. and Ee", fontsize=24)
+        ax.set_ylabel("Demeaned Shootcount", fontsize=24)
+        ax.set_xlabel("Gaussian Process 90 Day Trailing Temp Avg", fontsize=24)
+        ax.tick_params(axis="both", labelsize=18)
 
     #Reg
     Y = comp[gt_var]
@@ -987,43 +1119,45 @@ for i, n in enumerate(periods):
     p=results.params
     
     #Plotting reg line
-    ax[i].plot(comp["gp_temp_" + str(n)], p.const + p["gp_temp_" + str(n)] * comp["gp_temp_" + str(n)], color="black")
+    ax.plot(comp["gp_temp_" + str(n)], p.const + p["gp_temp_" + str(n)] * comp["gp_temp_" + str(n)], color="black")
     fig.legend(pd.unique(gt_data["Station ID"]), prop={'size': 25})
     plt.tight_layout(pad=10)
 
-#Plotting data and regression line (idw)
-fig, ax = plt.subplots(len(periods))
+# #Plotting data and regression line (idw)
 
-for i, n in enumerate(periods):
+# for i, n in enumerate(periods):
     
-    for sta in pd.unique(gt_data["Station ID"]):
-        working=comp.loc[comp["Station ID"]==sta]
+#     for sta in pd.unique(gt_data["Station ID"]):
+#         working=comp.loc[comp["Station ID"]==sta]
 
-        bars=errors.loc[errors["Station ID"]==sta, gt_var]
-        ax[i].errorbar(working["idw_temp_" + str(n)], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
+#         bars=errors.loc[errors["Station ID"]==sta, gt_var]
+#         ax[1].errorbar(working["idw_temp_" + str(n)], working[gt_var], yerr=bars, fmt="none", zorder=1, color="black", capsize=10)
 
-        ax[i].scatter(working["idw_temp_" + str(n)], working[gt_var], s=100)
+#         ax[1].scatter(working["idw_temp_" + str(n)], working[gt_var], s=100)
 
-        ax[i].set_title("Demeaned Shootcount vs. CTDEEP IDW-Predicted  " + str(n) + " Day Avg Temp.", fontsize=18)
-        ax[i].set_ylabel("Demeaned Shootcount", fontsize=18)
-        ax[i].set_xlabel(str(n) + " Day Trailing Temp Avg", fontsize=18)
-
-    #Reg
-    Y = comp[gt_var]
-    X = comp[["idw_temp_" + str(n)]]
-    X=sm.add_constant(X)
-    model=sm.OLS(Y, X)
-    results =model.fit()
-    p=results.params
+#         ax[1].set_title("CTDEEP IDW " + str(n) + " Day Trailing Avg", fontsize=24)
+#         ax[1].set_ylabel("Demeaned Shootcount", fontsize=24)
+#         ax[1].set_xlabel(str(n) + " Day Trailing Temp Avg", fontsize=24)
+#         ax[1].tick_params(axis="both", labelsize=18)
+#     #Reg
+#     Y = comp[gt_var]
+#     X = comp[["idw_temp_" + str(n)]]
+#     X=sm.add_constant(X)
+#     model=sm.OLS(Y, X)
+#     results =model.fit()
+#     p=results.params
     
-    #Plotting reg line
-    ax[i].plot(comp["idw_temp_" + str(n)], p.const + p["idw_temp_" + str(n)] * comp["idw_temp_" + str(n)], color="black")
-    fig.legend(pd.unique(gt_data["Station ID"]), prop={'size': 25})
-    plt.tight_layout(pad=10)
+#     #Plotting reg line
+#     ax[1].plot(comp["idw_temp_" + str(n)], p.const + p["idw_temp_" + str(n)] * comp["idw_temp_" + str(n)], color="black")
+#     fig.legend(pd.unique(gt_data["Station ID"]), prop={'size': 25})
+#     plt.tight_layout(pad=10)
+
+plt.savefig("Figures_for_paper/fig11.png")
 
 
 # +
 #QQ plots
+working=comp.loc[comp["Station ID"]=="NR"]
 
 #GP
 for i, n in enumerate(periods):
@@ -1051,8 +1185,7 @@ for i, n in enumerate(periods):
 
 
 # +
-#Regression w/ gp temp
-results=pd.DataFrame()
+#Regression w/ gp temp (Approach II)
 variables=["r2", ""]
 
 for i, n in enumerate((periods)):
@@ -1081,55 +1214,18 @@ for i, n in enumerate((periods)):
     
     tabs = results.summary().tables
     res_df = pd.read_html(tabs[1].as_html(), header=0, index_col=0)[0]
-    res_df.index=pd.MultiIndex.from_arrays([[temp_var]*len(res_df), res_df.index])
-    agg_results=pd.concat([agg_results, res_df], axis=0)
+    res_df.index=["Constant", "GP Trailing Avg Temperature"]
     
     #Adding to r-squared results
-    r2[reg_name]=results.rsquared
-    
-agg_results
-
-# +
-#Regression and plotting w/ idw temp
-
-for i, n in enumerate((periods)):
-
-    reg_name="idw_temp_" + str(n)
-    comp["Temp_Rolling_Average"]=comp[reg_name]
-    temp_var=reg_name
-    control_var=[]
-    data=comp
-
-    #Covariance Matrix
-    print("Endogenous var correlation:")
-    print(np.corrcoef([comp[temp_var]] + [comp[var] for var in control_var]))
-
-    #Reg
-    Y = comp[gt_var]
-    X = comp[["Temp_Rolling_Average"]+control_var]
-    X=sm.add_constant(X)
-    model=sm.OLS(Y, X)
-    results =model.fit()
-    p=results.params    
-    #Printing and storing param results for concatentation
-    print(reg_name + " Results " + str(n) + " Day Rolling Avg:")
-#   print(results.summary())
-    
-    tabs = results.summary().tables
-    res_df = pd.read_html(tabs[1].as_html(), header=0, index_col=0)[0]
-    res_df.index=pd.MultiIndex.from_arrays([[temp_var]*len(res_df), res_df.index])
-    agg_results=pd.concat([agg_results, res_df], axis=0)
-
-    #Adding to r-squared results
-    r2[reg_name]=results.rsquared
-    
-plt.show()
-agg_results
+    r2[reg_name]=[results.rsquared]
+res_df
 
 # +
 #Reformatting results
+pd.options.display.float_format = '{:,.3f}'.format
+
 from pandas import IndexSlice as idx
-formatted = agg_results.unstack(level=0).stack(level=0)
+formatted = agg_results.unstack(level=[0, 1]).stack(level=0)
 formatted.rename(columns= {col: "GP " + col[-2:] + " Day Trailing Avg" for col in formatted.columns if col[:2]=="gp"}, inplace=True)
 formatted.rename(columns= {col: "CTDEEP IDW " + col[-2:] + " Day Trailing Avg" for col in formatted.columns if col[:3]=="idw"}, inplace=True)
 formatted.rename(index={"Day":"Day of Year", "Temp_Rolling_Average":"Temperature Variable", "const":"Constant"}, inplace=True)
@@ -1137,12 +1233,17 @@ formatted=formatted.loc[idx[:, ["coef", "t", "P>|t|"]], :]
 formatted.sort_index(level=0, inplace=True)
 
 #Adding r2 values
-r2.rename(columns= {col: "GP " + col[-2:] + " Day Trailing Avg" for col in r2.columns if col[:2]=="gp"}, inplace=True)
-r2.rename(columns= {col: "CTDEEP IDW " + col[-2:] + " Day Trailing Avg" for col in r2.columns if col[:3]=="idw"}, inplace=True)
-r2.index=pd.MultiIndex.from_arrays([["R-squared Value"], [""]])
+r2.columns=formatted.columns
+r2.index=pd.MultiIndex.from_arrays([["R Squared"], [""]])
 formatted=pd.concat([formatted, r2])
 formatted
 # -
+
+r2
+
+#Reformatting
+reformatted = formatted.copy()
+reformatted.columns=pd.MultiIndex.from_lists([["Approach I: "]])
 
 # ## Repro Counts Trailing Mean
 
