@@ -46,8 +46,8 @@ paths[1] = config["EHSI_Update_path1"]
 #Original EHSI file, uncropped, un-resampled
 paths[2] = config["EHSI_Update_path2"]
 
-#EHSI file cropped but un-resampled
-paths[3] = config["EHSI_Update_path3"]
+# #EHSI file cropped but un-resampled
+# paths[3] = config["EHSI_Update_path3"]
 
 #Final EHSI file cropped and resampled
 paths[4] = config["EHSI_Update_path4"]

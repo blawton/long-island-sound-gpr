@@ -126,14 +126,14 @@ paths[4]  = config["Prediction_Dashboard_path4"]
 #This is the preferred dataset for dashboard 3 but doesn't open w/ gdal properly
 paths[6] = config["Prediction_Dashboard_path6"]
 
-#Like paths[6] but within entire sound
-paths[8] = config["Prediction_Dashboard_path8"]
+# #Like paths[6] but within entire sound
+# paths[8] = config["Prediction_Dashboard_path8"]
 
 #Ouput Path for tiffs
 paths[7] = config["Prediction_Dashboard_output"]
 
-#For embayment distance but cropped
-cropped = config["Prediction_Dashboard_path9"]
+# #For embayment distance but cropped
+# cropped = config["Prediction_Dashboard_path9"]
 
 #CSV
 

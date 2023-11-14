@@ -97,24 +97,24 @@ paths={}
 
 # Coastal features
 
-#GeoTiff for part of LIS not in a vaudrey embayment that was measured (open sound)
-paths[1] = config["Prediction_Dashboard_path1"]
+# #GeoTiff for part of LIS not in a vaudrey embayment that was measured (open sound)
+# paths[1] = config["Prediction_Dashboard_path1"]
 
-#Geotiff of embay distance clipped to be outside state lines (to remove land)
-paths[2] = config["Prediction_Dashboard_path2"]
+# #Geotiff of embay distance clipped to be outside state lines (to remove land)
+# paths[2] = config["Prediction_Dashboard_path2"]
 
-#Embayment distance clipped to be only in a vaudrey embayment that had measurements and an embay_dist value
-paths[3] = config["Prediction_Dashboard_path3"]
+# #Embayment distance clipped to be only in a vaudrey embayment that had measurements and an embay_dist value
+# paths[3] = config["Prediction_Dashboard_path3"]
 
-#Final embayment distance (output of first paragraph of notebook from v 2.1.2)
-paths[4]  = config["Prediction_Dashboard_path4"]
+# #Final embayment distance (output of first paragraph of notebook from v 2.1.2)
+# paths[4]  = config["Prediction_Dashboard_path4"]
 
-#Final embayment distance (output of first paragraph of notebook) BUT within measured embays
-#This is the preferred dataset for dashboard 3 but doesn't open w/ gdal properly
-paths[6] = config["Prediction_Dashboard_path6"]
+# #Final embayment distance (output of first paragraph of notebook) BUT within measured embays
+# #This is the preferred dataset for dashboard 3 but doesn't open w/ gdal properly
+# paths[6] = config["Prediction_Dashboard_path6"]
 
-#Like paths[6] but within entire sound
-paths[8] = config["Prediction_Dashboard_path8"]
+# #Like paths[6] but within entire sound
+# paths[8] = config["Prediction_Dashboard_path8"]
 
 #Ouput Path for tiffs
 paths[7] = config["Prediction_Dashboard_output"]
