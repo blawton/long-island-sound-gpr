@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 scounts.plot
 
-scounts=pd.read_csv("../Data/Dominion Energy/Millstone_Shoot_Counts.csv", index_col=0)
+scounts=pd.read_csv("../Data/Dominion_Energy/Millstone_Shoot_Counts.csv", index_col=0)
 scounts["Year"]=pd.to_datetime(scounts["Date"]).dt.year
 scounts["Month"]=pd.to_datetime(scounts["Date"]).dt.month
 scounts=scounts.groupby(["Month", "Year", "Station ID"]).mean()
@@ -19,7 +19,7 @@ plt.show()
 
 # # Preparing Data
 
-scounts=pd.read_csv("../Data/Dominion Energy/Millstone_Shoot_Counts.csv", index_col=0)
+scounts=pd.read_csv("../Data/Dominion_Energy/Millstone_Shoot_Counts.csv", index_col=0)
 scounts["Year"]=pd.to_datetime(scounts["Date"]).dt.year
 scounts["Month"]=pd.to_datetime(scounts["Date"]).dt.month
 scounts=scounts.groupby(["Month", "Year", "Station ID"]).mean()
@@ -33,7 +33,7 @@ plt.show()
 # The former cell suggests that a regression on the change in shoot count from July to September could be instructive
 
 # +
-rcounts=pd.read_csv("../Data/Dominion Energy/Millstone_Repro_Counts.csv")
+rcounts=pd.read_csv("../Data/Dominion_Energy/Millstone_Repro_Counts.csv")
 print(pd.unique(rcounts["Station"]))
 rcounts.replace({"Jordan Cove":"JC", "Niantic River":"NR", "White Point":"WP"}, inplace=True)
 
@@ -50,7 +50,7 @@ rcounts
 # +
 # Making 8 combinations of temperature to test: (whole summer average vs. July/Aug avg) x (bottom/top) x (C/NB)
 avg_periods={"JA": [7, 8], "Summer": [6, 7, 8]}
-inputs=pd.read_csv("../Data/Dominion Energy/C_and_NB_data.csv")
+inputs=pd.read_csv("../Data/Dominion_Energy/C_and_NB_data.csv")
 inputs.dropna(subset="Station", inplace=True)
 indep_vars=pd.DataFrame()
 print(pd.unique(inputs["Station"]))
@@ -164,7 +164,7 @@ import statsmodels.api as sm
 
 # +
 #Reading in intake temp
-indep=pd.read_csv("../Data/Dominion Energy/Intake_temps.csv")
+indep=pd.read_csv("../Data/Dominion_Energy/Intake_temps.csv")
 indep["Year"]=pd.to_numeric(indep["Year"], errors="coerce")
 indep.set_index("Year", inplace=True)
 indep["JA_Intake"]=indep[["Jul", "Aug"]].mean(axis=1)
@@ -288,7 +288,7 @@ lag=1
 
 # +
 #Reading in intake temp
-indep=pd.read_csv("../Data/Dominion Energy/Intake_temps.csv")
+indep=pd.read_csv("../Data/Dominion_Energy/Intake_temps.csv")
 indep["Year"]=pd.to_numeric(indep["Year"], errors="coerce")
 indep.set_index("Year", inplace=True)
 indep=indep.iloc[:, :12].copy()

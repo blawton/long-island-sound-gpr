@@ -871,7 +871,7 @@ gt_for_pred={}
 #Making a prediction dataframe for each year in case location changes
 for year in years:
     #Restricting to non-continuous data to see how GP fills in data
-    working=pd.read_csv("Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv", index_col=0)
+    working=pd.read_csv("Data/Dominion_Energy/Millstone_Shoot_Counts_coastal_features.csv", index_col=0)
 
     #Creating year variable
     working["Date"]=pd.to_datetime(working["Date"])
@@ -981,7 +981,7 @@ gt_for_pred={}
 #Making a prediction dataframe for each year in case location changes
 for year in years:
     #Restricting to non-continuous data to see how GP fills in data
-    working=pd.read_csv("Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv", index_col=0)
+    working=pd.read_csv("Data/Dominion_Energy/Millstone_Shoot_Counts_coastal_features.csv", index_col=0)
 
     #Creating year variable
     working["Date"]=pd.to_datetime(working["Date"])
@@ -1009,7 +1009,7 @@ import scipy.stats as stats
 
 # +
 #params
-gt_path="Data/Dominion Energy/Millstone_Shoot_Counts_coastal_features.csv"
+gt_path="Data/Dominion_Energy/Millstone_Shoot_Counts_coastal_features.csv"
 gt_var="ShootCount"
 
 #Days for trailing mean
@@ -1249,7 +1249,7 @@ reformatted.columns=pd.MultiIndex.from_lists([["Approach I: "]])
 
 # +
 #params
-gt_path="Data/Dominion Energy/Millstone_Repro_Counts.csv"
+gt_path="Data/Dominion_Energy/Millstone_Repro_Counts.csv"
 gt_var="ReproCount"
 
 #Days for trailing mean
@@ -1456,7 +1456,7 @@ plt.show()
 thresh=25
 
 #Reading in mapping data for actual merging
-gt=pd.read_csv("Data/Dominion Energy/Millstone_Eelgrass_Mapping_coastal_features.csv", index_col=0)
+gt=pd.read_csv("Data/Dominion_Energy/Millstone_Eelgrass_Mapping_coastal_features.csv", index_col=0)
 gt["Date"]=pd.to_datetime(gt["Date"])
 gt["Year"]=gt["Date"].dt.year
 gt=gt.loc[gt["Year"].isin(years)]
@@ -1471,7 +1471,7 @@ gt_for_pred={}
 #Making a prediction dataframe for each year in case location changes
 for year in years:
     #Restricting to non-continuous data to see how GP fills in data
-    working=pd.read_csv("Data/Dominion Energy/Millstone_Eelgrass_Mapping_coastal_features.csv", index_col=0)
+    working=pd.read_csv("Data/Dominion_Energy/Millstone_Eelgrass_Mapping_coastal_features.csv", index_col=0)
 
     #Creating year variable
     working["Date"]=pd.to_datetime(working["Date"])

@@ -258,7 +258,7 @@ def temp_sampler(df, timeset, bins, sample_size, station, year):
 
 
 #continuous data in right format for testing
-datapoints=pd.read_csv("Data/STS Continuous Data/STS_Continuous_Data_Pre_Processing.csv", index_col=0)
+datapoints=pd.read_csv("Data/STS_Continuous_Data/STS_Continuous_Data_Pre_Processing.csv", index_col=0)
 datapoints["Time"]=pd.to_datetime(datapoints["Date Time (GMT-04:00)"]).dt.time.astype(str)
 datapoints["Year"]=pd.to_datetime(datapoints["Date Time (GMT-04:00)"]).dt.year
 datapoints.set_index("Time", inplace=True)
@@ -511,7 +511,7 @@ agg.to_csv("Data/hobo_data_all_years/hobo_data_agg.csv")
 
 # # Finishing Dominion Processing
 
-dom = pd.read_csv("Data/Dominion Energy/C_and_NB_data.csv")
+dom = pd.read_csv("Data/Dominion_Energy/C_and_NB_data.csv")
 dom.rename(columns={"Station":"Station ID"}, inplace=True)
 dom.drop(0, axis=0, inplace=True)
 dom.head()
@@ -530,13 +530,13 @@ dom=dom.merge(dom_coords.reset_index(), how="left", on="Station ID")
 dom.head()
 
 #Outputting
-dom.to_csv("Data/Dominion Energy/C_and_NB_data_with_coords.csv")
+dom.to_csv("Data/Dominion_Energy/C_and_NB_data_with_coords.csv")
 
 # # Finish Mystic Processing
 
 # +
 #Reading in file and simplifiying site no
-mystic_agg = pd.read_csv("Data/Mystic River/agg_fully_processed.csv", index_col=0)
+mystic_agg = pd.read_csv("Data/Mystic_River/agg_fully_processed.csv", index_col=0)
 
 mystic_agg["site_no"]=mystic_agg["site_no"].str.replace("MYSTIC HARBOR", "USGS")
 mystic_agg["site_no"]=mystic_agg["site_no"].str.replace("MYSTIC RIVER", "USGS")
@@ -552,7 +552,7 @@ mystic_agg.head()
 
 
 #Saving
-mystic_agg.to_csv("Data/Mystic River/agg_fully_processed_temp_and_bottom_temp.csv")
+mystic_agg.to_csv("Data/Mystic_River/agg_fully_processed_temp_and_bottom_temp.csv")
 
 # # Comparing summer means to IDW of CTDEEP
 

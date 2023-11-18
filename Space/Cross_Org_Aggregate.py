@@ -54,12 +54,12 @@ assert(list(input_names.keys())==organization_names)
 
 #All these paths are in the project repo and thus don't need to be stored on config.yaml
 organization_paths={'EPA_FISM':"Data/hobo_data_all_years/hobo_data_agg.csv",
-                    'STS_Tier_II':"Data/STS Continuous Data/Interpolated_STS_Continuous_Data_4_12_2023.csv",
-                    'STS_Tier_I':"Data/STS Discrete Data/STS_Discrete_4_13_2023.csv",
+                    'STS_Tier_II':"Data/STS_Continuous_Data/Interpolated_STS_Continuous_Data_4_12_2023.csv",
+                    'STS_Tier_I':"Data/STS_Discrete_Data/STS_Discrete_4_13_2023.csv",
                     'USGS_Discrete':"Data/WQP/WQP_merged_no_STS_4_21_2023.csv",
                     'URI': "Data/URIWW/URIWW_4_19_2023.csv",
-                    'Dominion': "Data/Dominion Energy/C_and_NB_data_with_coords.csv",
-                    'USGS_Cont': "Data/Mystic River/agg_fully_processed_temp_and_bottom_temp.csv"
+                    'Dominion': "Data/Dominion_Energy/C_and_NB_data_with_coords.csv",
+                    'USGS_Cont': "Data/Mystic_River/agg_fully_processed_temp_and_bottom_temp.csv"
                    }
 for path in organization_paths.values(): assert(os.path.exists(path))
 assert(list(organization_paths.keys())==organization_names)

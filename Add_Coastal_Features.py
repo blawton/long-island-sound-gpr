@@ -61,13 +61,13 @@ paths[1]=config["Workbook_path1"]
 #If space
 #paths[2]="Data/Space_agg/agg_summer_means_4_21_2023_II.csv"
 #If space and time:
-paths[2]= "Data/Dominion Energy/Millstone_Eelgrass_Mapping.csv"
+paths[2]= "Data/Dominion_Energy/Millstone_Eelgrass_Mapping.csv"
 
 #Ouput for Aggregate Data above but with embay_dist attached
 #If space
 #outputs[1]="Data/Space_agg/agg_summer_means_coastal_features_4_21_2021.csv"
 #If space and time
-outputs[1]="Data/Dominion Energy/Millstone_Eelgrass_Mapping_coastal_features.csv"
+outputs[1]="Data/Dominion_Energy/Millstone_Eelgrass_Mapping_coastal_features.csv"
 
 for path in paths.values():
     assert(os.path.exists(path))
