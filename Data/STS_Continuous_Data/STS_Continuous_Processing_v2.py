@@ -16,12 +16,12 @@ with open("../../config.yml", "r") as file:
 # +
 #params
 
-input_file=config["STS_Continuous_Processing_input"]
-output_file=config["STS_Continuous_Processing_output"]
-
-assert(os.path.exists(input_file))
-assert(os.path.exists(output_file))
+input_file="STS_Continuous_Data_Pre_Processing_11_18_2023.csv"
+output_file="Interpolated_STS_Continuous_Data_11_18_2023.csv"
 # -
+
+#Global Variables
+dep_var="Temperature (C)"
 
 # v2 of this notebook is significantly streamlined, with only the actual processing tasks included
 
@@ -57,8 +57,8 @@ def despike(df, threshold, window_size):
 sts_dict={}
 for station in pd.unique(sts["Station ID"]):
     working=sts.loc[sts["Station ID"]==station].copy(deep=True)
-    working.rename(columns={"Date Time (GMT-04:00)": "Date", "Temperature (C)":"temp"}, inplace=True)
-    working["Date"]=pd.to_datetime(working["Date"])
+    working.rename(columns={"Date Time (GMT-04:00)": "Date"}, inplace=True)
+    working["Date"]=pd.to_datetime(working["Date"], format='mixed')
     working["Year"]=working["Date"].dt.year
     
     #saving
@@ -68,7 +68,7 @@ for station in pd.unique(sts["Station ID"]):
 for index, df in sts_dict.items():
     for year in pd.unique(df["Year"]):
         working=df.loc[df["Year"]==year]
-        plt.plot(working["Date"], working["temp"], c="tab:blue")
+        plt.plot(working["Date"], working[dep_var], c="tab:blue")
     plt.title(index)
     plt.xticks(rotation=90)
     plt.show()
@@ -85,7 +85,7 @@ for index, df in sts_dict.items():
     working.reset_index(inplace=True, drop=True)
     
     #Setting left endpoints as np.nan to avoid confusion
-    working.loc[(~working["temp"].isna()) & (working.shift(periods=1)["temp"].isna())]=np.nan
+    working.loc[(~working[dep_var].isna()) & (working.shift(periods=1)[dep_var].isna())]=np.nan
     
     despiked[index]=working
 
@@ -97,7 +97,7 @@ for index, df in despiked.items():
     working.reset_index(inplace=True, drop=True)
     
     #Setting left endpoints as np.nan to avoid confusion
-    working.loc[(~working["temp"].isna()) & (working.shift(periods=-1)["temp"].isna())]=np.nan
+    working.loc[(~working[dep_var].isna()) & (working.shift(periods=-1)[dep_var].isna())]=np.nan
     
     despiked[index]=working
 # -
@@ -106,7 +106,7 @@ for index, df in despiked.items():
 for index, df in despiked.items():
     for year in pd.unique(df["Year"]):
         working=df.loc[df["Year"]==year]
-        plt.plot(working["Date"], working["temp"], c="tab:blue")
+        plt.plot(working["Date"], working[dep_var], c="tab:blue")
     plt.title(index)
     plt.xticks(rotation=90)
     plt.show()
@@ -126,7 +126,7 @@ for index, df in despiked.items():
         working.set_index(["Station ID", "Date", "Year"], inplace=True, drop=True)
         
         #Despiking
-        working["temp"]=despike(working["temp"], thresh, window)
+        working[dep_var]=despike(working[dep_var], thresh, window)
         
         #Concatenating
         agg=pd.concat([agg, working], axis=0)
@@ -138,7 +138,7 @@ for index, df in despiked.items():
 for index, df in despiked.items():
     for year in pd.unique(df["Year"]):
         working=df.loc[df["Year"]==year]
-        plt.plot(working["Date"], working["temp"], c="tab:blue")
+        plt.plot(working["Date"], working[dep_var], c="tab:blue")
     plt.title(index)
     plt.xticks(rotation=90)
     plt.show()
@@ -151,8 +151,9 @@ for index, df in despiked.items():
 for_interp={}
 for index, df in despiked.items():
     working=df.copy(deep=True)
-    working["Date"]=working["Date"].dt.date
-    working=working.groupby("Date").mean()
+    working["Date"]=pd.to_datetime(working["Date"], errors='coerce').dt.date
+    working.dropna(subset=["Date"], inplace=True)
+    working=working.groupby("Date")[[dep_var, "Year"]].mean()
     working.reset_index(inplace=True)
     
     #saving
@@ -168,7 +169,7 @@ for index, df in for_interp.items():
         working=df.loc[df["Year"]==year].copy(deep=True)
         
         #Interpolating
-        working["temp"]=working["temp"].interpolate(method='linear')
+        working[dep_var]=working[dep_var].interpolate(method='linear')
         
         #Concatenating
         agg=pd.concat([agg, working], axis=0)
@@ -179,18 +180,18 @@ for index, df in for_interp.items():
 for index, df in lin_interpolated.items():
     for year in pd.unique(df["Year"]):
         working=df.loc[df["Year"]==year]
-        plt.plot(working["Date"], working["temp"], c="tab:blue")
+        plt.plot(working["Date"], working[dep_var], c="tab:blue")
     plt.title(index)
     plt.xticks(rotation=90)
     plt.show()
 
-#Ensuring that (most) data has a datapoint for each day in August and July
+#Ensuring that (most) data has a datapoint for each day in August and July, output should be empty
 missing_data=[]
 for index, df in lin_interpolated.items():
     for year in pd.unique(df["Year"]):
         working=df.loc[df["Year"]==year].copy(deep=True)
         working["Month"]=pd.to_datetime(working["Date"]).dt.month
-        if len(working.loc[(working["temp"].isna()) & ((working["Month"]==7) | (working["Month"]==8))])>0:
+        if len(working.loc[(working[dep_var].isna()) & ((working["Month"]==7) | (working["Month"]==8))])>0:
             missing_data.append((year, index))
 print(missing_data)
 
@@ -200,3 +201,5 @@ for index, df in lin_interpolated.items():
     df["Station ID"]=index
     output=pd.concat([output, df])
 output.to_csv(output_file)
+
+

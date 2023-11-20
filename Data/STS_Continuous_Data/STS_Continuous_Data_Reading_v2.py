@@ -5,6 +5,7 @@ import os
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+import datetime
 
 pd.set_option('display.max_columns', 50)
 pd.set_option('display.max_rows', 100)
@@ -43,10 +44,13 @@ station_sheets={2019: config["STS_Continuous_Data_Reading_stations_2019"],
 #Paths for STS stations
 station_paths={}
 
-station_paths[2019] = paths[1] + station_sheets[2019]
-station_paths[2020] = paths[1] + station_sheets[2020]
-station_paths[2021] = paths[2] + station_sheets[2021]
-station_paths[2022] = paths[2] + station_sheets[2022]
+station_paths[2019] = "/".join([paths[1],  station_sheets[2019]])
+station_paths[2020] = "/".join([paths[1],  station_sheets[2020]])
+station_paths[2021] = "/".join([paths[2],  station_sheets[2021]])
+station_paths[2022] = "/".join([paths[2],  station_sheets[2022]])
+
+#Output file
+output_file="STS_Continuous_Data_Pre_Processing_11_18_2023.csv"
 
 for path in paths.values():
     assert(os.path.isdir(path))
@@ -54,6 +58,9 @@ for path in paths.values():
 for path in station_paths.values():
     assert(os.path.exists(path))
 # -
+
+#Global variables
+dep_var="Temperature (C)"
 
 # # Reading in and Outputting Data
 
@@ -77,12 +84,12 @@ dfs={}
 agg_data=pd.DataFrame()
 for i, path in enumerate(paths.values()):
     contents = {k:v for (k, v) in tables.items() if v in os.listdir(path)}
-    print(contents)
+    # print(contents)
     for year, excel in contents.items():
-        for name, df in pd.read_excel(path + excel, sheet_name=None).items():
+        for name, df in pd.read_excel("/".join([path, excel]), sheet_name=None).items():
             if not name.endswith("Stations"):
-                print(name)
-                print(df.head())
+                # print(name)
+                # print(df.head())
                 
                 #Giving all rows in a given tab the corresp. station ID
                 df["Station ID"]=name
@@ -121,7 +128,7 @@ print(len(stations))
 
 #Fixing all Longitude Issues
 stations["Longitude"]= -stations["Longitude"].abs()
-stations
+# stations
 
 #Merging
 output=agg_data.merge(stations, how='left', on=["Station ID", "Year"])
@@ -133,17 +140,15 @@ output=agg_data.merge(stations, how='left', on=["Station ID", "Year"])
 print(output.loc[output["Longitude"].isna()])
 print(output.loc[output["Latitude"].isna()])
 
-#Getting timespan and avg frequencies of Measurement
-for char in list(agg_data.columns[1:6]):
-    valid=agg_data.loc[~agg_data[char].isna()].copy(deep=True)
-    recent=pd.to_datetime(valid["Date Time (GMT-04:00)"].min())
-    distant=pd.to_datetime(valid["Date Time (GMT-04:00)"].max())
-    span=(distant - recent)
-    print(char)
-    print('/n Span:')
-    print(span)
-    span=span / np.timedelta64(1, 'Y')
-    print("Avg Freg. (Measurements/Yr):")
-    print(len(valid)/span)
+#Getting amount of temperature data in each year
+for year in np.arange(2019, 2023):
+    valid=agg_data.loc[~agg_data[dep_var].isna()].copy(deep=True)
+    print(year)
+    working=valid.loc[pd.to_datetime(valid["Date Time (GMT-04:00)"]).dt.year==year]
+    print(len(pd.unique(working["Station ID"])), "Stations")
+    working=agg_data.loc[agg_data["Date Time (GMT-04:00)"].dt.year==year]
+    print(len(working), "Datapoints")
 
-output.to_csv("STS_Continuous_Data_Pre_Processing_4_12_2023.csv")
+output.to_csv(output_file)
+
+

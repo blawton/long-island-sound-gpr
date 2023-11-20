@@ -5,6 +5,8 @@ from io import StringIO
 from IPython import display
 import time
 import os
+import requests
+import regex as re
 
 # +
 pd.set_option('display.max_rows', 200)
@@ -20,15 +22,52 @@ import yaml
 
 with open("../../config.yml", "r") as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
+# -
+#Local Data Source
+output_file = "USGS_Cont_ES_Pre_Processing_11_18_2023.csv"
+stations_output = "USGS_Cont_ES_Stations_11_18_2023.csv"
+#This url gets temperature for the entire Eastern Sound Area
+url="https://nwis.waterdata.usgs.gov/usa/nwis/uv/?referred_module=qw&nw_longitude_va=-72.59&nw_latitude_va=41.54&se_longitude_va=-71.81&se_latitude_va=40.97&coordinate_format=decimal_degrees&index_pmcode_00010=1&group_key=NONE&sitefile_output_format=html_table&column_name=agency_cd&column_name=site_no&column_name=station_nm&range_selection=date_range&begin_date=2019-01-01&end_date=2023-11-19&format=rdb&date_format=YYYY-MM-DD&rdb_compression=value&list_of_search_criteria=lat_long_bounding_box%2Crealtime_parameter_selection"
+
 
 # +
-#Local Data Source
-path= config["Mystic_River_Reading_path"]
+#Reading from url
 
-assert(os.path.exists(path))
+f=requests.get(url)
+text=f.text
 
 
+# +
+#Getting stations
+def get_stations(all_text):
+    i=0
+    prev=0
+    station_end_line=False
+    lines=[]
+    station_dict={}
+    
+    while not station_end_line:
+        while all_text[i]!="\n":
+            i+=1
+        line=all_text[prev:i]
+        i+=1
+        prev=i
+        if re.match("\# *USGS", line) is not None:
+            lines.append(line)
+        elif len(lines)!=0:
+            station_end_line=True
+            
+    for line in lines:
+        station_dict[re.search("USGS (\d+) (\w+)", line).group(1)]= re.search("USGS (\d+) ([\w ]+)", line).group(2)
+    return(station_dict)
+    
+#Testing
+get_stations(text[0:5000])
 # -
+
+#Getting Stations
+station_dict=get_stations(text)
+
 
 # # Parsing Downloaded File of Water Data
 
@@ -99,28 +138,27 @@ def read_rdb(text):
     return parameter_lists, outputs
 
 
+#Tesing parser on first 5000 lines
+test_pms, test_dfs = read_rdb(text[0:5000])
+# print(test_pms)
+# print(test_dfs)
+
 # # Reading and Processing
 
-with open(path) as f:
-    text=f.read()
-    pms, dfs = read_rdb(text)
+pms, dfs = read_rdb(text)
 dfs
 
-dfs[2]
+dfs[2].head()
 
 pms[2]
 
-#Renaming pms to fix dissolved oxygen issue
-for pm in pms:
-    do_cols=pm.loc[pm["Description"].str.contains("Dissolved oxygen")].copy(deep=True)
-    do_cols["Description"]=do_cols["Description"].apply(lambda x: x.split(", ")[0]+ "_" + x.split(", ")[-2] + ", " + x.split(", ")[-1])
-    pm.loc[pm["Description"].str.contains("Dissolved oxygen")]=do_cols
+print(len(dfs))
 
+#Quick Processing
 for df in dfs:
     df.fillna(value= np.nan, inplace=True)
     df.drop(0, axis=0, inplace=True)
 for pm in pms:
-    print(pm.columns)
     pm[pm.columns[1]] = pm[pm.columns[1]].str.lstrip(" ")
     pm["Param"]=pm[pm.columns[0]] + "_" + pm[pm.columns[1]]
     pm["Param"]=pm["Param"].str.strip(" ")
@@ -138,18 +176,14 @@ for i, df in enumerate(dfs):
             df.columns=[column.replace(str(row.loc["Param"]), row.loc['Description'].split(', ')[0] + "_" + row.loc['Description'].split(', ')[-1]) for column in df.columns]
         
 print(dfs[2].columns)
+
+
 # -
-
-site_dict={412047071580800: "MYSTIC HARBOR AT SAFE HARBOR MARINA",
-412117071580800: "MYSTIC RIVER AT ROUTE 1 BRIDGE",
-412141071580200: "MYSTIC RIVER AT MYSTIC SEAPORT",
-412240071574700: "MYSTIC RIVER US RTE I95 BRIDGE"}
-
 
 # # Coords
 
 #rdb reader from hydrofunctions for usgs file types (adapted from https://github.com/mroberge/hydrofunctions)
-def read_rdb(text):
+def read_rdb_2(text):
     """Read strings that are in rdb format.
 
     Args:
@@ -225,34 +259,60 @@ def read_rdb(text):
 
 
 #Testing function and getting templates for df
-testdf = read_rdb(requests.get('https://waterservices.usgs.gov/nwis/site/?format=rdb&sites=01196530&siteStatus=all').text)[1]
+testdf = read_rdb_2(requests.get('https://waterservices.usgs.gov/nwis/site/?format=rdb&sites=01196530&siteStatus=all').text)[1]
 print(testdf)
 
 # +
-#Getting coordinates for all stations in site_dict
+#Getting coordinates for all stations in station_dict
 usgs_df = pd.DataFrame()
 
-for station in site_dict.keys():
+for station in station_dict.keys():
     url = 'https://waterservices.usgs.gov/nwis/site/?format=rdb&sites=' + str(station) + '&siteStatus=all'
-    text= requests.get(url).text
-    df = read_rdb(text)[1]
+    station_text= requests.get(url).text
+    df = read_rdb_2(station_text)[1]
     usgs_df=pd.concat([usgs_df, df])
     time.sleep(.1)
 
 usgs_df.head()
 # -
 
+print(len(usgs_df))
+
 #Merging
 for i, df in enumerate(dfs):
-    dfs[i]=dfs[i].merge(usgs_df[["site_no", "dec_lat_va", "dec_long_va"]], how="left", on="site_no")
+    dfs[i]=dfs[i].merge(usgs_df[["site_no", "dec_lat_va", "dec_long_va", "station_nm"]], how="left", on="site_no")
     dfs[i].rename(columns={"dec_lat_va": "Latitude", "dec_long_va":"Longitude"}, inplace=True)
+
+dfs[2].head()
 
 # # Outputting
 
+# +
+#Aggregating
+output=pd.DataFrame()
 for df in dfs:
-    site_no=int(df.iloc[0, 1])
-    site=site_dict[site_no]
-    print(site)
-    df.to_csv(site + ".csv")
+    output = pd.concat([output, df])
 
-dfs[1]
+#Summing by year and station
+output["Year"]=pd.to_datetime(output["datetime"]).dt.year
+# -
+
+#Keeping only columns with temperature 
+temp_cols= [col for col in output.columns if (re.match("Temperature", col) is not None) and (col[-3:]!="_cd")]
+# print(temp_cols)
+summary = output.groupby(["Year", "station_nm"])[temp_cols].count()
+print(summary.head())
+
+#Dropping entries if they have no temperature
+print(len(output))
+output.dropna(subset=temp_cols, how="all", inplace=True)
+print(len(output))
+
+stations = pd.DataFrame.from_dict(station_dict, columns=["station_nm"], orient='index')
+stations.reset_index(names=["site_no"], inplace=True)
+stations
+
+output.to_csv(output_file)
+stations.to_csv(stations_output)
+
+
