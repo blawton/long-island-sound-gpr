@@ -412,103 +412,6 @@ std_devs
 
 # Its pretty clear from the output above that this model overpredicts the standard error because it doesnt assume spaced out sampling, which is what the discrete sampling actually uses.
 
-# # Finishing Processing of HOBO Data (this will be moved to its own notebook)
-
-# +
-#reading in mumford and beebe in from files
-beebe=pd.read_csv(paths[4], header=1, index_col=0)
-mum=pd.read_csv(paths[5], header=1, index_col=0)
-
-beebe.rename(columns={strings[1]: "temp", "Date Time, GMT-04:00":"Date"}, inplace=True)
-mum.rename(columns={strings[2]: "temp", "Date Time, GMT-04:00":"Date"}, inplace=True)
-
-beebe.Date=pd.to_datetime(beebe.Date)
-mum.Date=pd.to_datetime(mum.Date)
-
-#No more converting to Fahrenheight
-#beebe.temp=beebe.temp*(9/5) + 32
-#mum.temp=mum.temp*(9/5) + 32
-
-beebe.drop(beebe.columns[2:], axis=1, inplace=True)
-mum.drop(mum.columns[2:], axis=1, inplace=True)
-beebe.dropna(subset=["temp"], inplace=True)
-mum.dropna(subset=["temp"], inplace=True)
-
-beebe.head()
-
-# +
-#reading in fishers island data and processing data
-root = dirs[1]
-hobo_data={}
-for file in os.listdir(root):
-    working =pd.read_csv(root + "/" + file)
-    #working.set_index("#", inplace=True)
-    #print(working.columns)
-    working.rename(columns={"date": "Date"}, inplace=True)
-    working["Date"]=pd.to_datetime(working["Date"])
-    working["temp"]=pd.to_numeric(working["temp"])
-    #print(working.head())
-    working.drop(working.columns[3:], axis=1, inplace=True)
-    working.drop(working.columns[0], axis=1, inplace=True)
-    #print(working.groupby("Date").count())
-    hobo_data[file.rstrip(".csv")]=working
-print([key for key in list(hobo_data.keys())])
-
-root = dirs[2]
-for file in os.listdir(root):
-    working =pd.read_csv(root + "/" + file)
-    working.columns=working.loc[2]
-    working.drop([0,1, 2], axis=0, inplace=True)
-    working["Datetime"]=pd.to_datetime(working.iloc[:, 1]+ " " + working.iloc[:, 2])
-    #print(working["Datetime"])
-    working.drop(working.columns[1:3], axis=1, inplace=True)
-    working.rename(columns={"Datetime": "Date"}, inplace=True)
-    #print(working.columns)
-    working["Temp (°C)"]=pd.to_numeric(working["Temp (°C)"])
-    working.rename(columns={"Temp (°C)":"temp"}, inplace=True)
-    name =file.rstrip("2022.csv")
-    #print(name.split(" ")[0])
-    print(working.tail())
-    match = [key for key in list(hobo_data.keys()) if key.startswith(name[:3])]
-    if len(match)>1:
-        raise ValueError('Too many viable matches')
-    else:
-        combined=pd.concat([hobo_data[match[0]], working], axis=0, ignore_index=False)
-        hobo_data[match[0]]=combined
-
-#Test of arbitrary stations
-print(hobo_data['Barleyfield Cove'])
-print(hobo_data['Hay Harbor'])
-# -
-
-#Adding mumford and beebe (keep in mind these are unprocessed)
-hobo_data["Mumford Cove"]=mum
-hobo_data["Beebe Cove"]=beebe
-
-#Reading in GPS coords from yaml (compared to original output as check)
-coords={}
-for key, value in yaml_coords.items():
-    coords[key.replace("_", " ")]= tuple(value)
-coords
-
-# +
-#Adding coords and aggregating data
-agg=pd.DataFrame()
-
-for key, df in hobo_data.items():
-    assert(list(df.columns).count("temp")==1)
-    assert(list(df.columns).count("Date")==1)
-    df["Latitude"]= coords[key][0]
-    df["Longitude"]= coords[key][1]
-    df["Station ID"]= key
-    agg=pd.concat([agg, df])
-
-# +
-#Outputting HOBO Logger Data to Data Folder
-
-agg.to_csv("Data/hobo_data_all_years/hobo_data_agg.csv")
-# -
-
 # # Finishing Dominion Processing
 
 dom = pd.read_csv("Data/Dominion_Energy/C_and_NB_data.csv")
@@ -531,28 +434,6 @@ dom.head()
 
 #Outputting
 dom.to_csv("Data/Dominion_Energy/C_and_NB_data_with_coords.csv")
-
-# # Finish Mystic Processing
-
-# +
-#Reading in file and simplifiying site no
-mystic_agg = pd.read_csv("Data/Mystic_River/agg_fully_processed.csv", index_col=0)
-
-mystic_agg["site_no"]=mystic_agg["site_no"].str.replace("MYSTIC HARBOR", "USGS")
-mystic_agg["site_no"]=mystic_agg["site_no"].str.replace("MYSTIC RIVER", "USGS")
-mystic_agg["site_no"]=mystic_agg["site_no"].str.replace(" ", "_")
-mystic_agg.head()
-# -
-
-# The code below implies that "Temperature" is a suitable proxy for "Temperature_BOTTOM". This should be checked
-
-#Fusing Temperature w/ bottom temperature (with priority to bottom temp. for consistency w/ other datasets)
-mystic_agg.loc[~mystic_agg["Temperature_BOTTOM"].isna(), "Temperature"]=mystic_agg.loc[~mystic_agg["Temperature_BOTTOM"].isna(), "Temperature_BOTTOM"]
-mystic_agg.head()
-
-
-#Saving
-mystic_agg.to_csv("Data/Mystic_River/agg_fully_processed_temp_and_bottom_temp.csv")
 
 # # Comparing summer means to IDW of CTDEEP
 
