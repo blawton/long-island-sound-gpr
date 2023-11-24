@@ -412,29 +412,6 @@ std_devs
 
 # Its pretty clear from the output above that this model overpredicts the standard error because it doesnt assume spaced out sampling, which is what the discrete sampling actually uses.
 
-# # Finishing Dominion Processing
-
-dom = pd.read_csv("Data/Dominion_Energy/C_and_NB_data.csv")
-dom.rename(columns={"Station":"Station ID"}, inplace=True)
-dom.drop(0, axis=0, inplace=True)
-dom.head()
-
-#lat and lon coords from YAML (these need to be checked)
-dom_coords=pd.DataFrame(index=["C", "NB"], columns=["Latitude", "Longitude"])
-dom_coords.loc["C"] = np.array(yaml_coords["Dominion_C"])
-dom_coords.loc["NB"] = np.array(yaml_coords["Dominion_NB"])
-dom_coords.index.name="Station ID"
-dom_coords
-
-dom_coords.reset_index()
-
-#Merging coords
-dom=dom.merge(dom_coords.reset_index(), how="left", on="Station ID")
-dom.head()
-
-#Outputting
-dom.to_csv("Data/Dominion_Energy/C_and_NB_data_with_coords.csv")
-
 # # Comparing summer means to IDW of CTDEEP
 
 # This Section has now been updated to use 2021 data (as of April 5, 2023)

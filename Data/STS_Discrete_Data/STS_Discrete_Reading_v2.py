@@ -1,5 +1,4 @@
 import pandas as pd
-#import shapefile
 from json import dumps
 import os
 import json
@@ -33,15 +32,15 @@ tables={2018:config["STS_Discrete_Reading_tables_2018"],
         2021:config["STS_Discrete_Reading_tables_2021"]}
 
 for table in tables.values():
-    assert(os.path.exists(path1 + table))
+    assert(os.path.exists(path1 + "/" + table))
 
 # +
 dfs={}
 agg_data=pd.DataFrame()
 
 for year, table in tables.items():
-    dfs[year]=pd.read_csv(path1+table)
-    print(dfs[year].head)
+    dfs[year]=pd.read_csv(path1+ "/" + table)
+    # print(dfs[year].head)
     agg_data=pd.concat([agg_data, dfs[year]], axis=0)
 # -
 
@@ -54,13 +53,15 @@ print(len(agg_data))
 agg_data.dropna(subset="Station_ID", inplace=True)
 print(len(agg_data))
 
-print(agg_data.loc[~agg_data["Notes.1"].isna(), "Notes.1"])
-print(agg_data.loc[~agg_data["Notes"].isna(), "Notes"])
+# +
+# print(agg_data.loc[~agg_data["Notes.1"].isna(), "Notes.1"])
+# print(agg_data.loc[~agg_data["Notes"].isna(), "Notes"])
+# -
 
 agg_data.drop(["Unnamed: " + str(n) for n in np.arange(44, 95)], axis=1, inplace=True)
 
 #Testing to ensure Notes columns are mutually exclusive
-agg_data.loc[(~agg_data["Notes.1"].isna()) & (~agg_data["Notes"].isna())]
+print("Double Notes:", len(agg_data.loc[(~agg_data["Notes.1"].isna()) & (~agg_data["Notes"].isna())]))
 
 #Combining Notes into one column
 agg_data.loc[~agg_data["Notes.1"].isna(), "Notes"]=agg_data.loc[~agg_data["Notes.1"].isna(), "Notes.1"]
@@ -68,16 +69,16 @@ agg_data.drop("Notes.1", axis=1, inplace=True)
 
 #Reading in stations
 stations=pd.read_csv(path2)
-pd.unique(stations["Station_ID"])
+# pd.unique(stations["Station_ID"])
 
 #Unmatched Stations
 mismatches = agg_data.loc[~agg_data["Station_ID"].isin(stations["Station_ID"])]
-pd.unique(mismatches["Station_ID"])
+print("Unmatched Stations:", pd.unique(mismatches["Station_ID"]))
 
 #Seeing if removing 3 letter prefix fixes all mismatches
 no_prefix=mismatches["Station_ID"].str[4:]
 no_prefix_mismatches= pd.unique(no_prefix.loc[~no_prefix.isin(stations["Station_ID"])])
-print(no_prefix_mismatches)
+# print(no_prefix_mismatches)
 
 # 1. All the unmatched stations seem to be a result of three letter prefixes before station name (similar to STS_continuous), which we fix below
 #     * Except for Flushing Bay, which is output of cell above
@@ -95,10 +96,10 @@ print(len(agg_data))
 
 #Merging Station Data and Underlying Data
 agg_data=agg_data.merge(stations, how="left", on="Station_ID", suffixes=["", "_s"])
-agg_data.head()
+# agg_data.head()
 
 #Testing for unmerged data (this output should be empty)
-print(agg_data.loc[agg_data["Embay_Pt"].isna()])
+print("Still unmatched:", len(agg_data.loc[agg_data["Embay_Pt"].isna()]))
 
 # Like all other discrete data sources, we drop data outside of a vaudrey embayment
 
@@ -115,12 +116,11 @@ embaydf["OrganizationIdentifier"]="CFE-STS"
 embaydf.rename(columns={"Station_ID":"MonitoringLocationIdentifier"}, inplace=True)
 embaydf["MonitoringLocationIdentifier"]=embaydf["MonitoringLocationIdentifier"].apply(lambda x: "CFE-STS-" + x)
 #embaydf.set_index(["Subw_Embay", "OrganizationIdentifier", "MonitoringLocationIdentifier"], inplace=True)
-embaydf.head()
+# embaydf.head()
+
+# +
+# embays=pd.unique(agg_data["Subw_Embay"])
+# embays
 # -
 
-embays=pd.unique(agg_data["Subw_Embay"])
-embays
-
-embaydf.to_csv("STS_Discrete_4_13_2023.csv")
-
-
+embaydf.to_csv("STS_Discrete_11_18_2023.csv")
