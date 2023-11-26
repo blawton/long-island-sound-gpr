@@ -17,7 +17,19 @@ with open("../../config.yml", "r") as file:
 #params
 
 input_file="STS_Continuous_Data_Pre_Processing_11_18_2023.csv"
+pre_output_file="Processed_STS_Continuous_Data_11_18_2023.csv"
 output_file="Interpolated_STS_Continuous_Data_11_18_2023.csv"
+
+#Despiking params
+
+#Window length of measurements to consider
+window=10
+
+#Threshold for difference of measurement above median of the window around a point
+thresh=1
+
+#params
+years=[2019, 2020, 2021, 2022]
 # -
 
 #Global Variables
@@ -31,20 +43,13 @@ dep_var="Temperature (C)"
 sts = pd.read_csv(input_file, index_col=0)
 sts
 
+#seeing if there is indeed data to interpolate
+sts.loc[pd.to_numeric(sts["Temperature (C)"], errors="coerce").isna()]
+
+help(sts.reindex)
+
+
 # ## Despiking
-
-# +
-#Despiking Parameters
-
-#Window length of measurements to consider
-window=5
-
-#Threshold for difference of measurement above median of the window around a point
-#Above Threshold, measurement will be replaced with median of the window
-thresh=.5
-
-
-# -
 
 #Despiking function for non-endpoints
 def despike(df, threshold, window_size):
@@ -63,6 +68,8 @@ for station in pd.unique(sts["Station ID"]):
     
     #saving
     sts_dict[station]=working
+
+sts_dict["EAB-I-1B-L"].head()
 
 #Graphing
 for index, df in sts_dict.items():
@@ -134,7 +141,7 @@ for index, df in despiked.items():
     agg.reset_index(inplace=True)
     despiked[index]=agg
 
-#Testing despiking
+#Testing despiking non-endpoints
 for index, df in despiked.items():
     for year in pd.unique(df["Year"]):
         working=df.loc[df["Year"]==year]
@@ -143,21 +150,62 @@ for index, df in despiked.items():
     plt.xticks(rotation=90)
     plt.show()
 
+pre_output=pd.DataFrame()
+for index, df in despiked.items():
+    df["Station ID"]=index
+    pre_output=pd.concat([pre_output, df])
+pre_output.to_csv(pre_output_file)
+
 # ## Simple Approach to Interpolation
 
 # In linear interpolation, we first group by date because it makes no sense to run linear interpolation over larger gaps based on diel fluctuations
 
-#Grouping by date (no time)
+#Getting pre-interp length (of hourly data)
+sum=0
+for index, df in despiked.items():
+    working=df.copy()
+    working["Date"]=pd.to_datetime(working["Date"], errors='coerce').dt.round("H")
+    sum+=len(pd.unique(working["Date"]))
+print("Pre-interp datapoints:", sum)
+
+# +
+#Switching to time by hour
+
 for_interp={}
 for index, df in despiked.items():
-    working=df.copy(deep=True)
-    working["Date"]=pd.to_datetime(working["Date"], errors='coerce').dt.date
-    working.dropna(subset=["Date"], inplace=True)
-    working=working.groupby("Date")[[dep_var, "Year"]].mean()
-    working.reset_index(inplace=True)
+    agg=pd.DataFrame()
     
+    for year in pd.unique(df["Year"]):
+        #Selecting year's data
+        working=df.loc[df["Year"]==year].copy()
+    
+        #Rounding to nearest hour
+        working["Date"]=pd.to_datetime(working["Date"], errors='coerce').dt.round("H")
+    
+        #Dropping nas
+        working.dropna(subset=["Date"], inplace=True)
+    
+        #Averaging datapoints
+        working=working.groupby("Date")[[dep_var, "Year", "Latitude", "Longitude"]].mean()
+        working.reset_index(inplace=True)
+    
+        #Reindexing to hourly datapoint
+        new_index=pd.date_range(working["Date"].min().floor('H'), working["Date"].max().ceil('H'), freq='H')
+        working.set_index("Date", inplace=True)
+        # pre = len(working)
+        working=working.reindex(new_index, fill_value=np.nan)
+        working.reset_index(inplace=True, names="Date")
+        post=len(working)
+        # print(post-pre)
+        
+        #Aggregating
+        agg=pd.concat([agg, working])
+    
+    print(index, "NA percentage:", len(agg.loc[agg["Temperature (C)"].isna()])/len(agg))
+        
     #saving
-    for_interp[index]=working
+    for_interp[index]=agg
+# -
 
 lin_interpolated={}
 #interpolation with rolling averages
@@ -165,41 +213,49 @@ for index, df in for_interp.items():
 
     #this part should be done within each year
     agg=pd.DataFrame()
-    for year in pd.unique(df["Year"]):
-        working=df.loc[df["Year"]==year].copy(deep=True)
-        
-        #Interpolating
-        working[dep_var]=working[dep_var].interpolate(method='linear')
-        
-        #Concatenating
-        agg=pd.concat([agg, working], axis=0)
-        
-    lin_interpolated[index]=agg
+    for year in pd.unique(df["Date"].dt.year):
+
+        #Interpolating by each hour of the day (inefficient but accurate)
+        for time in pd.unique(df["Date"].dt.time):
+            working=df.loc[(df["Date"].dt.year==year) & (df["Date"].dt.time==time)].copy(deep=True)
+            
+            #Interpolating
+            working[dep_var]=working[dep_var].interpolate(method='linear')
+            working["Latitude"]=working["Latitude"].interpolate(method='linear')
+            working["Longitude"]=working["Longitude"].interpolate(method='linear')
+            
+            #Concatenating
+            agg=pd.concat([agg, working], axis=0)
+
+    #Re-sorting and outputting
+    lin_interpolated[index]=agg.sort_values("Date")
 
 #Testing interpolation
 for index, df in lin_interpolated.items():
-    for year in pd.unique(df["Year"]):
-        working=df.loc[df["Year"]==year]
+    for year in pd.unique(df["Date"].dt.year):
+        working=df.loc[df["Date"].dt.year==year]
         plt.plot(working["Date"], working[dep_var], c="tab:blue")
     plt.title(index)
     plt.xticks(rotation=90)
     plt.show()
 
-#Ensuring that (most) data has a datapoint for each day in August and July, output should be empty
-missing_data=[]
+#Checking new na percentages
 for index, df in lin_interpolated.items():
-    for year in pd.unique(df["Year"]):
-        working=df.loc[df["Year"]==year].copy(deep=True)
-        working["Month"]=pd.to_datetime(working["Date"]).dt.month
-        if len(working.loc[(working[dep_var].isna()) & ((working["Month"]==7) | (working["Month"]==8))])>0:
-            missing_data.append((year, index))
-print(missing_data)
+    print(index, "NA percentage:", len(df.loc[df["Temperature (C)"].isna()])/len(df))
 
+# +
 #Aggregating and Saving in Data Folder
 output=pd.DataFrame()
 for index, df in lin_interpolated.items():
     df["Station ID"]=index
     output=pd.concat([output, df])
+
+#Refilling year var of interpolated data
+output["Year"]=output["Date"].dt.year
+
+print("Post-interp datapoints:", len(output))
+print("Missing datapoints:", len(output.loc[output["Latitude"].isna()]))
 output.to_csv(output_file)
+# -
 
 

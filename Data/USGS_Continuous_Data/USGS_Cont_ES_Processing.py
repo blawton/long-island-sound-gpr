@@ -18,7 +18,8 @@ plt.rcParams["figure.figsize"]=(21, 10)
 #Loading station dict
 station_file="USGS_Cont_ES_Stations_11_18_2023.csv"
 input_file="USGS_Cont_ES_Pre_Processing_11_18_2023.csv"
-output_file="USGS_Cont_ES_Processed_11_18_2023.csv"
+pre_output_file="USGS_Cont_ES_Processed_11_18_2023.csv"
+output_file="USGS_Cont_ES_Interpolated_11_18_2023.csv"
 
 #Regex for variables
 
@@ -115,11 +116,13 @@ print(agg_l)
 # # Processing
 
 # +
-#Finding percent of nas and performing linear interpolation, and aggregating
-
-output=pd.DataFrame()
+#Despiking and pre-output
+processed={}
+pre_output=pd.DataFrame()
 
 for site, df in dfs.items():
+    
+    processed[site]=pd.DataFrame()
     for year in pd.unique(df["Year"]):
         working=df.loc[df["Year"]==year].copy()
         working.sort_values(by=["datetime"], inplace=True)
@@ -127,24 +130,36 @@ for site, df in dfs.items():
         #Despiking
         working["Temperature"]=despike(working["Temperature"], thresh, window)
 
-        #Only adding to output if more than half of months have date
-        temp=working.copy()
-        temp["Month"]=temp["datetime"].dt.month
-        temp=temp.groupby("Month")["Temperature"].count()>0
-        if sum(temp)>=6:
-            print(year, site)
-            print(len(working.loc[working[new_dep_var].isna()])/len(working))
-            working[new_dep_var]=working[new_dep_var].interpolate(method='linear', limit_area='inside')
-            print(len(working.loc[working[new_dep_var].isna()])/len(working), "(post correction)")
-            output=pd.concat([output, working])
+        #Saving
+        processed[site]=pd.concat([processed[site], working])
+        pre_output=pd.concat([pre_output, working])
+        
+print("Datapoints:", pre_output[new_dep_var].count())
+pre_output.dropna(subset=[new_dep_var], inplace=True)
+pre_output.to_csv(pre_output_file)
 
-print(len(output))
+# +
+#Linear interpolation
+
+output=pd.DataFrame()
+for site, df in processed.items():
+    for year in pd.unique(df["Year"]):
+
+        #Selecting data
+        working=df.loc[df["Year"]==year].copy()
+        working.sort_values(by=["datetime"], inplace=True)
+
+        #Running linear interpolation
+        print(len(working.loc[working[new_dep_var].isna()])/len(working))
+        working[new_dep_var]=working[new_dep_var].interpolate(method='linear', limit_area='inside')
+        print(len(working.loc[working[new_dep_var].isna()])/len(working), "(post correction)")
+        output=pd.concat([output, working])
+
+print("Datapoints:", output[new_dep_var].count())
+output.to_csv(output_file)
 # -
 
 # Spaces match the .tsv file, so the data was correctly parsed, the percentage of nas is small wherever there is data
-
-#Outputting
-output.to_csv(output_file)
 
 output.head()
 

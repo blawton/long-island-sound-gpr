@@ -62,7 +62,6 @@ window=24
 
 # # Fishers Island
 
-# +
 #Accomodates the different formats in each year of source data
 site_data={}
 for i in np.arange(1, 5):
@@ -118,9 +117,6 @@ for year in years:
             
         except:
             print("No data for site " + str(i))
-
-
-# -
 
 #Getting rid of nas
 for site in np.arange(1, 5):
@@ -239,11 +235,11 @@ for station in pd.unique(agg["Station ID"]):
         #Despiking
         working[dep_var]=despike(working[dep_var], thresh, window)
 
-        #No missing data, so printing is unneccesary
+        #No interpolation of data here
+        # print(working[dep_var].count()/len(working))
+        # working[dep_var]=working[dep_var].interpolate(method='linear', limit_area='inside')
+        # print(working[dep_var].count()/len(working), "(post correction)")
         
-        # print(len(working.loc[working[dep_var].isna()])/len(working))
-        working[dep_var]=working[dep_var].interpolate(method='linear', limit_area='inside')
-        # print(len(working.loc[working[dep_var].isna()])/len(working), "(post correction)")
         output=pd.concat([output, working])
 
 # -
