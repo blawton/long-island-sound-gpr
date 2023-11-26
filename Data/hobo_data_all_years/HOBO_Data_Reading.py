@@ -58,6 +58,9 @@ dep_var="temp"
 #Despiking params
 thresh=3
 window=24
+
+#output
+output_file="HOBO_Data_Agg_11_18_2023.csv"
 # -
 
 # # Fishers Island
@@ -252,7 +255,7 @@ print(output.groupby(["Station ID", "Year"]).count())
 # +
 #Outputting HOBO Logger Data to Data Folder
 
-output.to_csv("HOBO_Date_Agg.csv")
+output.to_csv(output_file)
 # -
 
 # # Graphing to check work
@@ -270,5 +273,3 @@ for station in np.unique(agg["Station ID"]):
     plt.plot(working["Date"], working["temp"])
     plt.title(station + " post")
     plt.show()
-
-

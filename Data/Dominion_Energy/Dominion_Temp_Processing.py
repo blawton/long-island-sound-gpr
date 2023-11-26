@@ -23,6 +23,8 @@ with open("../../coords.yml", "r") as file:
 path = config["Dominion_Temp_Data"]
 
 assert(os.path.exists(path))
+
+output_file="C_and_NB_data_11_18_2023.csv"
 # -
 
 dom = pd.read_csv(path)
@@ -42,4 +44,6 @@ dom=dom.merge(dom_coords.reset_index(), how="left", on="Station ID")
 dom.head()
 
 #Outputting
-dom.to_csv("C_and_NB_data.csv")
+dom.to_csv(output_file)
+
+

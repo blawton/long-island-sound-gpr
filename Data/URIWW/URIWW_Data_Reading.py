@@ -23,6 +23,8 @@ assert(os.path.isdir(path2))
 
 dep_var="Temperature - 00011"
 dep_var_unit="C"
+
+output_file="URIWW_11_18_2023.csv"
 # -
 
 #Reading in data (and making sure that stations exist for 2021)
@@ -94,6 +96,6 @@ print(len(embaydf))
 embaydf.sort_values("Date of Sample", inplace=True)
 print(embaydf["Date of Sample"].tail())
 
-embaydf.to_csv("URIWW_11_18_2023.csv")
+embaydf.to_csv(output_file)
 
 

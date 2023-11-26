@@ -30,9 +30,7 @@ stations_output = "USGS_Cont_ES_Stations_11_18_2023.csv"
 url="https://nwis.waterdata.usgs.gov/usa/nwis/uv/?referred_module=qw&nw_longitude_va=-72.59&nw_latitude_va=41.54&se_longitude_va=-71.81&se_latitude_va=40.97&coordinate_format=decimal_degrees&index_pmcode_00010=1&group_key=NONE&sitefile_output_format=html_table&column_name=agency_cd&column_name=site_no&column_name=station_nm&range_selection=date_range&begin_date=2019-01-01&end_date=2023-11-19&format=rdb&date_format=YYYY-MM-DD&rdb_compression=value&list_of_search_criteria=lat_long_bounding_box%2Crealtime_parameter_selection"
 
 
-# +
 #Reading from url
-
 f=requests.get(url)
 text=f.text
 
@@ -314,5 +312,3 @@ stations
 
 output.to_csv(output_file)
 stations.to_csv(stations_output)
-
-

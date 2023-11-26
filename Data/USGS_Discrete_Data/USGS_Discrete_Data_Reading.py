@@ -36,6 +36,8 @@ assert(os.path.isdir(path2))
 #Dependent Variable
 depvar="Temperature, water"
 depvar_unit="deg C"
+
+output_file="USGS_Discrete_11_18_2023.csv"
 # -
 
 #Getting filepaths for each year
@@ -84,4 +86,4 @@ print(len(embaydf))
 embaydf=embaydf.loc[(embaydf["CharacteristicName"]==depvar) & (embaydf["ResultMeasure/MeasureUnitCode"]==depvar_unit)]
 print(len(embaydf))
 
-embaydf.to_csv("USGS_Discrete_11_18_2023.csv")
+embaydf.to_csv(output_file)

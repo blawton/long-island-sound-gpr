@@ -34,6 +34,8 @@ tables={2018:config["STS_Discrete_Reading_tables_2018"],
 for table in tables.values():
     assert(os.path.exists(path1 + "/" + table))
 
+output_file="STS_Discrete_11_18_2023.csv"
+
 # +
 dfs={}
 agg_data=pd.DataFrame()
@@ -123,4 +125,4 @@ embaydf["MonitoringLocationIdentifier"]=embaydf["MonitoringLocationIdentifier"].
 # embays
 # -
 
-embaydf.to_csv("STS_Discrete_11_18_2023.csv")
+embaydf.to_csv(output_file)
