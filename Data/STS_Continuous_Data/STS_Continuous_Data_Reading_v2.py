@@ -1,5 +1,4 @@
 import pandas as pd
-#import shapefile
 from json import dumps
 import os
 import json
@@ -20,47 +19,31 @@ with open("../../config.yml", "r") as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
 
 # +
-#Paths
-paths={}
+#params
 
-#STS Data (Original Set)
-paths[1]=config["STS_Continuous_Data_Reading_path1"]
-
-#STS data used to fill in 2021 gaps + add 2022 data
-paths[2]=config["STS_Continuous_Data_Reading_path2"]
+#STS Cont Data (Original Set)
+main_path=config["STS_Continuous_Data_Reading_path"]
 
 #Map of excel files from STS (format should be year:filename)
-tables={2019: config["STS_Continuous_Data_Reading_tables_2019"],
-        2020: config["STS_Continuous_Data_Reading_tables_2020"],
-        2021: config["STS_Continuous_Data_Reading_tables_2021"],
-        2022: config["STS_Continuous_Data_Reading_tables_2022"]
-       }
-
 station_sheets={2019: config["STS_Continuous_Data_Reading_stations_2019"],
                 2020: config["STS_Continuous_Data_Reading_stations_2020"],
                 2021: config["STS_Continuous_Data_Reading_stations_2021"],
                 2022: config["STS_Continuous_Data_Reading_stations_2022"]}
 
 #Paths for STS stations
-station_paths={}
-
-station_paths[2019] = "/".join([paths[1],  station_sheets[2019]])
-station_paths[2020] = "/".join([paths[1],  station_sheets[2020]])
-station_paths[2021] = "/".join([paths[2],  station_sheets[2021]])
-station_paths[2022] = "/".join([paths[2],  station_sheets[2022]])
+station_paths={year: "/".join([main_path,  station_sheets[year]]) for year in station_sheets.keys()}
 
 #Output file
 output_file="STS_Continuous_Data_Pre_Processing_11_18_2023.csv"
 
-for path in paths.values():
-    assert(os.path.isdir(path))
+assert(os.path.isdir(main_path))
     
 for path in station_paths.values():
     assert(os.path.exists(path))
-# -
 
-#Global variables
+#Dependent variable
 dep_var="Temperature (C)"
+# -
 
 # # Reading in and Outputting Data
 
@@ -77,37 +60,38 @@ station[2022] = pd.read_excel(station_paths[2022])
 #Giving a year to each station df for merging
 for year in station.keys():
     station[year]["Year"]=year
-# -
 
+# +
 #Reading in excel files by aggregating all tabs (STATIONS TAB MUST END WITH "Stations")
 dfs={}
 agg_data=pd.DataFrame()
-for i, path in enumerate(paths.values()):
-    contents = {k:v for (k, v) in tables.items() if v in os.listdir(path)}
-    # print(contents)
-    for year, excel in contents.items():
-        for name, df in pd.read_excel("/".join([path, excel]), sheet_name=None).items():
-            if not name.endswith("Stations"):
-                # print(name)
-                # print(df.head())
-                
-                #Giving all rows in a given tab the corresp. station ID
-                df["Station ID"]=name
-                
-                #Fixing format for 2019
-                if i==1:
-                    df.rename(columns={"Date Time (GMT -04:00)":"Date Time (GMT-04:00)", "Temperature (°C)": "Temperature (C)"}, inplace=True)
-                
-                agg_data=pd.concat([agg_data, df], axis=0)
+# print(contents)
 
-#Dropping na for temp (only dataset we care about)
-print(len(agg_data))
-agg_data.dropna(subset="Temperature (C)", inplace=True)
-print(len(agg_data))
+for year, excel in station_sheets.items():
+    for name, df in pd.read_excel("/".join([main_path, excel]), sheet_name=None).items():
+        print(name)
+        if not name.endswith("Stations"):
+            # print(name)
+            # print(df.head())
+            
+            #Giving all rows in a given tab the corresp. station ID
+            df["Station ID"]=name
+            
+            #Fixing column formats
+            df.rename(columns={"Date Time (GMT -04:00)":"Date Time (GMT-04:00)", "Temperature (°C)": "Temperature (C)"}, inplace=True)
+            
+            agg_data=pd.concat([agg_data, df], axis=0)
+# -
 
 #Giving agg_data a year for merging (output should be empty if all entries have year)
 agg_data["Year"]=pd.to_datetime(agg_data["Date Time (GMT-04:00)"]).dt.year
+print("No Times:")
 print(agg_data.loc[agg_data["Year"].isna()])
+
+#Dropping na for temp (only dataset we care about)
+print(len(agg_data))
+agg_data.dropna(subset=[dep_var], inplace=True)
+print(len(agg_data))
 
 #Concatenating Station Lists
 stations=pd.concat(station.values(), axis=0)
@@ -118,8 +102,8 @@ no_pref=pd.unique(hnc.str[4:])
 agg_data.replace({k:"HNC-"+ k for k in no_pref}, inplace=True)
 
 #Testing replacement (both outputs should be empty)
-print(pd.unique(agg_data.loc[~agg_data["Station ID"].isin(stations["Station ID"]), "Station ID"]))
-print(stations.loc[stations["Station ID"].isin(no_pref)])
+print("Unmatched Stations:", len(pd.unique(agg_data.loc[~agg_data["Station ID"].isin(stations["Station ID"]), "Station ID"])))
+print("Stations Missing Prefix:", len(stations.loc[stations["Station ID"].isin(no_pref)]))
 
 #Dropping Stations with No Coords
 print(len(stations))
@@ -137,18 +121,18 @@ output=agg_data.merge(stations, how='left', on=["Station ID", "Year"])
 # print(len(output))
 
 #Testing for stations without coords (both outputs should be empty)
-print(output.loc[output["Longitude"].isna()])
-print(output.loc[output["Latitude"].isna()])
+print("No Lon:", len(output.loc[output["Longitude"].isna()]))
+print( "No Lat:", output.loc[output["Latitude"].isna()]))
 
 #Getting amount of temperature data in each year
 for year in np.arange(2019, 2023):
-    valid=agg_data.loc[~agg_data[dep_var].isna()].copy(deep=True)
+    valid=output.loc[output["Year"]==year]
     print(year)
-    working=valid.loc[pd.to_datetime(valid["Date Time (GMT-04:00)"]).dt.year==year]
-    print(len(pd.unique(working["Station ID"])), "Stations")
-    working=agg_data.loc[agg_data["Date Time (GMT-04:00)"].dt.year==year]
-    print(len(working), "Datapoints")
+    print(len(pd.unique(valid["Station ID"])), "Stations")
+    print(len(valid), "Datapoints")
+    print("Duplicates:", valid.duplicated(["Station ID", "Date Time (GMT-04:00)"]).sum())
+    valid=valid.loc[(valid["Longitude"]>=-72.59) & (valid["Longitude"]<=-71.81)]
+    valid=valid.loc[(valid["Latitude"]>=40.97) & (valid["Latitude"]<=41.54)]
+    print(len(pd.unique(valid["Station ID"])), "Stations in the Eastern Sound")
 
 output.to_csv(output_file)
-
-

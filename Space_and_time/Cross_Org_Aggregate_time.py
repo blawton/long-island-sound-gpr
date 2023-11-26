@@ -71,6 +71,9 @@ for path in organization_paths.values():
 assert(list(organization_paths.keys())==organization_names)
 
 years=[2019, 2020, 2021, 2022]
+
+#Timecodes
+timecodes=['Time on Station, 24-Hour Time (hh:mm)', 'ActivityStartTime/Time']
 # +
 #Loop of reading, renaming, dropping nas
 unaggregated={}
@@ -212,7 +215,7 @@ for org, df in unaggregated.items():
     # print(working.head())
     
     processed[org]=working
-        
+
 
 processed["URI"].head()
 
