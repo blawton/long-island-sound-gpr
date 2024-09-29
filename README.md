@@ -119,7 +119,7 @@ This problem is mostly solved if we train the GPR only in the Eastern Sound, how
 
 Instead of evaluating the spatiotemporal Gaussian Process model here by using distributions of averages (which is besides a dubious approach as the test output is trained on the test data), we can look at the ability of the GPR to model a time series at a location where no temperature data exists and then compare the result to nearby continuous time series that were actually measured at nearby locations. The results for a few example stations can be seen below:
 
-![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig12.png)
+![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig12c.png)
 
 The above graphs of inferred temperature at White Point (WP), Niantic River (NR), and Jordan Cove (JC) eelgrass stations, shown on the map in the Introduction, demonstrate several advantages of the Gaussian Process approach:
 1. Its ability to create a realistic time series for a location with no existing data
