@@ -121,7 +121,7 @@ A summer average of temperature is a poor way to measure the susceptability of e
 
 Instead of evaluating the spatiotemporal Gaussian Process model here by using distributions of averages (which is besides a dubious approach as the test output is trained on the test data), we can look at the ability of the GPR to model a time series at a location where no temperature data exists and then compare the result to nearby continuous time series that were actually measured at nearby locations. The results for a few example stations can be seen below:
 
-![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig12.jpg)
+![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig12.png)
 
 The above graphs of inferred temperature at White Point (WP), Niantic River (NR), and Jordan Cove (JC) eelgrass stations, shown on the map in the Introduction, demonstrate several advantages of the Gaussian Process approach:
 1. Its ability to create a realistic time series for a location with no existing data
@@ -145,23 +145,29 @@ Time series where there is existing data have much tighter confidence intervals 
 
 ## 5. Proposed Further Direction
 The results above lead to the following 3 propostitions for advancement in existing temperature modeling for the Long Island Sound:
-1. Using a probabilistic model, in this case a GPR in order to infer fine grained (both spatially and temporily) temperature data for embayments in the long island sound - this process is likely overkill for the open sound, where temperature is dicated more by hydrological phenomena that can be modelled directly with other methods such as [NYHOPS](https://hudson.dl.stevens-tech.edu/maritimeforecast/maincontrol.shtml).
+
+### 1. Probabilistic Model
+Using a probabilistic model, in this case a GPR, in order to infer fine grained (both spatially and temporily) temperature data for embayments in the long island sound. A probabilistic model is preferred because of the ability to create confidence intervals. This process can be restricted to embayments, as in all the work above, because it is likely overkill for the open sound, where temperature is dicated more by hydrological phenomena that can be modelled directly with other methods such as [NYHOPS](https://hudson.dl.stevens-tech.edu/maritimeforecast/maincontrol.shtml).
 
 Results from this iteration of output 1 for selected dates:
 
 ![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig7a.png)
 
-3. Changing the temperature component of the Eelgrass Habitat Suitability Index (EHSI)[5] to a threshold of days over a given threshold, experimental data on eelgrass phenotypes nearest to the LIS suggests should be around 25 degrees Celcius (see Appendix A). Our model does not yet have enough continuous data to esimate the extrema of days over 25 degrees celcius (continuous monitoring stations are being added by the USGS every year), so we have created the below heatmap for days above 23 degrees, which is not an acutely stressful temperature for eelgrass, but has been associated with die-offs as a summer average.
+### 2. Using Days Over Temperature Thresholds Measured on Live Shoots
+Changing the temperature component of the Eelgrass Habitat Suitability Index (EHSI)[5] to a threshold of days over a given threshold, experimental data on eelgrass phenotypes nearest to the LIS suggests should be around 25 degrees Celcius (see Appendix A). Our model does not yet have enough continuous data to esimate the extrema of days over 25 degrees celcius (continuous monitoring stations are being added by the USGS every year), so we have created the below heatmap for days above 23 degrees, which is not an acutely stressful temperature for eelgrass, but has been associated with die-offs as a summer average.
 
 Results of a heatmap of days over 25 degrees C:
 
-
+(To reproduce graph with latest model)
    
-5. Incorporating more inputs into the probabilistic model for temperature prediction for a more accurate prediction. Good starting points would be:
+### 3. More inputs to temperature model to understand areas at risk
+
+Good starting points would be:
    a. Depth, for which medium grained spatial data currently exists, and super-fine-grained spatial data is currently being gathered using acoustic scattering data as part of the Long Island Sound Mapping and Research Collaborative (LISMaRC), for which ongoing Phase II progress can be seen [here](https://lismap.uconn.edu/phase-ii-data-fadd-draft-2/)
    b. Hydrological inputs, for example the NYHOPS model linked above
    c. Meteorological inputs like the ones used in [6]
 
+A model with more inputs would require a more sophisticated modeling package than Scipy, we suggesting using [GPFlow](https://github.com/GPflow/GPflow) because of its ability to use GPU acceleration and tensorflow to optimize large training operations.
 
 ## References
 
