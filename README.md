@@ -88,9 +88,11 @@ The input dataset, as mentioned in the disclaimer above, consists of a number of
       3. Day
       4. embay_dist
 ## 4. Preliminary Results/Graphs
-   As noted above, the results of the model for both the overall and the Eastern Sound make it very clear when the model works and when it does not work. The first test performed to see alignment of underlying data with results was a fairly simple test, namely a comparison of the distribtuion of summer averages at sampling stations. This initial metric was chosen because a simple comparison of distribution of model predicted temperatures at sample locations vs sampled temperatures would result in a difference in population for the two distributions in question. The model produces data on each day of the growing season (July 1st to August 31st) whereas most of the monitoring stations are discretely sampled, meaning they have only 4 datapoints for the growing season, spaced out every 2 weeks. This means that while model-predicted data has an even allocation between continuously-sampled locations and discrete stations, the actual sample data is skewed much more towards the continuous stations.
 
-   By taking a summer average at every station, we avoid this effect, and in a sense use a model that first uses all available data to predict daily temperatures (more accurately daily morning temperatures because of the averaging in the 6am to 8am window mentioned above), then averages together these daily temperatures to a summer average that can be compared to the summer average of sampled data at any station. We should expect the actual station data to have fatter tails because some of the averages are only averages of 4 data points vs. the 60 or so data points modelled for every station. The results for each year can be found for both the Eastern Sound window and the overall Long Island Sound by looking in the corresponding folder in [June_Graphs](https://github.com/blawton/long-island-sound-gpr/tree/master/Graphs/June_Graphs). 
+### Heuristic 1: Summer Averages
+   The first test performed to see alignment of underlying data with results was a fairly simple test, namely a comparison of the distribtuion of summer averages at sampling stations. This initial metric was chosen because a simple comparison of distribution of model predicted temperatures at sample locations vs sampled temperatures would result in a difference in population for the two distributions in question. The model produces data on each day of the growing season (July 1st to August 31st) whereas most of the monitoring stations are discretely sampled, meaning they have only 4 datapoints for the growing season, spaced out every 2 weeks. This means that while model-predicted data has an even allocation between continuously-sampled locations and discrete stations, the actual sample data is skewed much more towards the continuous stations.
+
+   By taking a summer average at every station, we avoid this effect, and in a sense use a model that first uses all available data to predict daily temperatures (more accurately daily morning temperatures because of the averaging in the 6am to 8am window mentioned above), then averages together these daily temperatures to a summer average that can be compared to the summer average of sampled data at any station. We should expect the actual station data to have fatter tails because some of the averages are only averages of 4 data points vs. the 60 or so data points modelled for every station. The results for each year can be found for both the Eastern Sound window and the overall Long Island Sound by looking in the corresponding folder in [June_Graphs](https://github.com/blawton/long-island-sound-gpr/tree/master/Graphs/June_Graphs).
 
    The graphs show alignment in distribution when looking at the overall LIS in 2019, 2020, and 2021.
 
@@ -107,6 +109,41 @@ However, we can see that as a result of limits in dataset size, this relationshi
 ![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/5bdfdcb3-c57d-4223-94ac-fabb0046db15)
 
 ![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/095dea99-6c04-4355-b4f8-116912e913b5)
+
+### Conclusion 1: 
+A summer average of temperature is a poor way to measure the susceptability of eelgrass to temperature stress for the following reasons:
+   a. For discretely measured data, variance of an actual predicted summer average will be high
+   b. If instead continuous data is used/modeled, a lower variance in summer average means that the data loses all meaning in predicting temperature extremes in regions where the eelgrass is most susceptible like the Eastern Sound (as shown by the last 3 figures above)
+   c. Eelgrass does not respond to average, heat stress occurs on as short a timeframe as XX days (see paper)
+
+### Heuristic 2: Infering time series at locations with a discrete Source of Truth
+
+Instead of evaluating the spatiotemporal Gaussian Process model here by using distributions of averages (which is besides a dubious approach as the test output is trained on the test data), we can look at the ability of the GPR to model a time series at a location where no temperature data exists and then compare the result to nearby continuous time series that were actually measured at nearby locations. The results for a few example stations can be seen below:
+
+![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig12.jpg)
+
+The above graphs of inferred temperature at White Point (WP), Niantic River (NR), and Jordan Cove (JC) eelgrass stations, shown on the map in the Introduction, demonstrate several advantages of the Gaussian Process approach:
+1. Its ability to create a realistic time series for a location with no existing data
+2. The stability of the predicted time series when compared to locations in the Niantic River, which are further from the open sound and thus warmer
+3. The confidence interval, which gives a verisimilitude of the modeled time series, and shows when we can conclude with 95% certainty that the temperature at the less-protected White Point station and Jordan Cove stations are colder than that of the stations on the Niantic River
+
+(White Point itself is an interesting use case of the model given its proximity to the Millstone Power Plant, which emits effluent at a consistently monitored temperature. Using this model for temperature nearest to actual eelgrass beds, the susceptibility of the eelgrass to the effluent from Millstone could be inferred).
+
+### Conclusion 2: 
+
+A Gaussian process model provides an option for obtaining realistic predictions that are spatial near existing measurements, yet may differ by a statistically significant margin from those existing measurements, as inferred using the covariance structure learned from training data.
+
+### Heuristic 3:
+
+Because it is in our interest to calculate the number of days above various temperature thresholds (described in detail in working paper), we are also interested in modeling continuous time series at locations where we have discrete test data. 
+
+![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig6.jpg)
+
+### Conclusion 3: 
+Time series where there is existing data have much tighter confidence intervals given proximity to existing data, and thus our modeled time series are a good candidate for a new more comprehensive metric for the temperature threat to eelgrass: days over a Heat Stress Threshold (see working paper for exact terminology)
+
+Our proposed metric for the "credible threat" to eelgrass from temperature stress, as modeled by a gaussian process model for locations within embayments (not in the open sound) can be seen below:
+
 
 ## References
 
