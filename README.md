@@ -11,13 +11,20 @@ It is also worth noting that all the python code here, with the exception of a f
 
 
 ## Table of Contents
-1. Current Status
-2. Production Model
+1. Introduction
+2. Current Status
+3. Production Model
     * Selection Procedure for hyperparameters and kernel
     * Procedure for cleaning input dataset
-3. Preliminary Results/Heatmaps
+4. Preliminary Results/Heatmaps
 
-## 1. Current Status (6/15/2023)
+## 1. Introduction: 
+
+The following figure summarizes the spatial region and data locations with which this model is concerned. In the left map (a), we see the temperature sampling locations, a mix of continuous and discrete stations, and in the right map (b) we see the distribution of eelgrass beds in the region of interest and the sampling stations where shoot counts and biomass are currently measured in the Long Island Sound.
+
+![Figure 1](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/Figure%201.jpg)
+
+## 2. Current Status (6/15/2023)
 
 The model for predicting a daily heatmap in the long island sound based on continuous and discrete data from that year can now be considered in production, as the hyperparameters, kernel, and processing of data used as an input have all been chosen. Initial results demonstrate when the model accurately captures the distribution of data at sampling stations and produces a realistic heatmap vs. when it does not. In particular, we are concerned most with the area where eelgrass is almost exclusively restricted to: the Eastern Sound. This window was defined for the purposes of this project by:
 
@@ -28,7 +35,7 @@ The model for predicting a daily heatmap in the long island sound based on conti
    
 The threshold for an accurate temperature map in this window appears to be the number of continuos monitoring stations in the sound, which makes sense as without the sample size provided by data coming in at least on a daily basis, a gaussian process is not a well-chosen model.
 
-## 2. Production Model
+## 3. Production Model
 
 ### Using Cross Validation to Train Hyperparameters
 
@@ -80,12 +87,12 @@ The input dataset, as mentioned in the disclaimer above, consists of a number of
       2. Longitude
       3. Day
       4. embay_dist
-## 3. Preliminary Results/Graphs
+## 4. Preliminary Results/Graphs
    As noted above, the results of the model for both the overall and the Eastern Sound make it very clear when the model works and when it does not work. The first test performed to see alignment of underlying data with results was a fairly simple test, namely a comparison of the distribtuion of summer averages at sampling stations. This initial metric was chosen because a simple comparison of distribution of model predicted temperatures at sample locations vs sampled temperatures would result in a difference in population for the two distributions in question. The model produces data on each day of the growing season (July 1st to August 31st) whereas most of the monitoring stations are discretely sampled, meaning they have only 4 datapoints for the growing season, spaced out every 2 weeks. This means that while model-predicted data has an even allocation between continuously-sampled locations and discrete stations, the actual sample data is skewed much more towards the continuous stations.
 
    By taking a summer average at every station, we avoid this effect, and in a sense use a model that first uses all available data to predict daily temperatures (more accurately daily morning temperatures because of the averaging in the 6am to 8am window mentioned above), then averages together these daily temperatures to a summer average that can be compared to the summer average of sampled data at any station. We should expect the actual station data to have fatter tails because some of the averages are only averages of 4 data points vs. the 60 or so data points modelled for every station. The results for each year can be found for both the Eastern Sound window and the overall Long Island Sound by looking in the corresponding folder in [June_Graphs](https://github.com/blawton/long-island-sound-gpr/tree/master/Graphs/June_Graphs). 
 
-   The graphs show alignment in distribution when looking at the overall LISS in 2019, 2020, and 2021.
+   The graphs show alignment in distribution when looking at the overall LIS in 2019, 2020, and 2021.
 
 ![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/9a188e04-0a1f-489e-a236-0c3e81fa4350)
 
