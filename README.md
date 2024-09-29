@@ -38,33 +38,7 @@ The threshold for an accurate temperature map in this window appears to be the n
 
 ## 3. Production Model
 
-### Using Cross Validation to Train Hyperparameters
-
-The kernel and amount of noise to use in this model, within the limitations of scikit learn's kernel implementation, were determined by 5 fold (grouped) cross validation, which was performed on the overall sound dataset, because even though the focus of this project is the Eastern Sound area defined above (where eelgrass is actually present), there is not enough data in this area for a gaussian process to be reliably trained in each year.
-
-Cross Validation training and testing sets were grouped by sampling station, because the true test of a gaussian process run over both spatial and time variables is its ability to synthesize an entire time series in each unknown location as opposed to performing time series interpolation on partially missing time series at a location with data that partially exists. From a mathematical perspective, however, in the case of a seperable kernel such as the RBF kernel, either the spatial or time variables will become simple scale factors on the covariances in the other set of variables and the idea of modeling a changing covariance structure over time is impossible without either a clever combination of kernels that allow the capture of interaction effects.
-
-Predictors were also standardized before the training was run to improve convergence of the LFBGS algorithm used to train the Gaussian Process throughout this entire project. The standardization was run within each fold as part of an sklearn pipeline to prevent data leakage from the test set to the train set.
-
-Cross validation was performed seperately 2019, 2020, and 2021 data, and candidates for kernel combinations in Round I were the three combinations of kernels that performed best on a much simpler interpolation task: interpolation of summer averages for sampling stations in 2019, 2020, and 2021 without any variable for time. The results for these pre-trials have not been organized but relied on the same model imlemented in the [Space](https://github.com/blawton/long-island-sound-gpr/tree/master/Space) folder of this model, as opposed to the [Space_and_Time](https://github.com/blawton/long-island-sound-gpr/tree/master/Space_and_time) folder.
-
-For the actual hyperparameter optimization, two rounds of cross validation were conducted:
-
-### Cross Validation Round I
-Used to determine the exact kernel combination with the candidates (chosen as outlined above):
-1. 1\**2 * RBF(length_scale=[1, 1, 1, 1]) + 1**2 * RationalQuadratic(alpha=1, length_scale=1)
-2. 1\**2 * Matern(length_scale=[1, 1, 1, 1], nu=1.5) + 1**2 * RationalQuadratic(alpha=1, length_scale=1)
-3. 1\**2 * Matern(length_scale=[1, 1, 1, 1], nu=0.5) + 1**2 * RBF(length_scale=[1, 1, 1, 1])
-
-Note: the parameters inside the kernel functions are just sklearns notation for the initial pre-training length scales, which are not incredibly important because a) data was normalzed and b) they are ultimately trained. The results of this training are in the [Results](https://github.com/blawton/long-island-sound-gpr/tree/master/Results) folder as "Optimization_with_Pre_Processing_results_[year].csv". The kernel combination that was settled on in the case of this model was the sum of an anisotropic radial basis function kernel with a rational quadratic kernel. These are two of the most popular kernels as explained in [2] below
-
-### Cross Validation Round II
-Used to determine alpha parameter, thus avoiding implementing a whitekernel with variable noise as part of the training process. The results of this training are in the [Results](https://github.com/blawton/long-island-sound-gpr/tree/master/Results) folder as "Parameter_Optimization_time_results_[year]_II.csv" and in this case, results led to the selection of an alpha parameter of .25. Because the output of the GPs were demeaned but not normalized, this corresponds to .25 degrees C. Diminishing returns were seen as alpha increased, suggesting .25 to be a near optimal level of noise.
-
-### Cross Validation Round 0
-The one other csv in the results folder, [Parameter_Optimization_time_results_2019.csv](https://github.com/blawton/long-island-sound-gpr/tree/master/Results/Parameter_Optimization_time_results_2019.csv), is from an early round of training done only on 2019 data in order to validate that a combination of kernels performs better than a Radial Basis Function alone.
-
-### Procedure for cleaning input dataset
+### Cleaning Data
 
 The input dataset, as mentioned in the disclaimer above, consists of a number of flat files obtained from water quality monitoring organizations, as well as files obtained by these data providers' apis. A considerable amount of effort went into both standardizing and processing all of this discordant data. This process can be divided into the following steps:
 
@@ -88,6 +62,35 @@ The input dataset, as mentioned in the disclaimer above, consists of a number of
       2. Longitude
       3. Day
       4. embay_dist
+    
+### Training Hyperparameters
+
+Given that the ultimate purpose of this model is not prediction, but rather using fine-grained modeling to assess shifts in habitat suitability across gaps (time and space) where data is not available, cross validation was performed seperately for each year of available data: 2019, 2020, and 2021. The kernel and amount of noise to use in this model, within the limitations of scikit learn's kernel implementation, were determined by 5 fold (grouped) cross validation.
+
+Cross Validation training and testing sets were grouped by sampling station, because the true test of a gaussian process run over both spatial and time variables is its ability to synthesize an entire time series in each unknown location as opposed to performing time series interpolation on partially missing time series at a location with data that partially exists. From a mathematical perspective, however, in the case of a seperable kernel such as the RBF kernel, either the spatial or time variables will become simple scale factors on the covariances in the other set of variables and the idea of modeling a changing covariance structure over time is impossible without either a clever combination of kernels that allow the capture of interaction effects (the sum of rational quadratic and RBF kernels is intended to account for this).
+
+Predictors were also standardized before the training was run to improve convergence of the LFBGS algorithm used to train the Gaussian Process throughout this entire project. The standardization was run within each fold as part of an sklearn pipeline to prevent data leakage from the test set to the train set. 
+
+For the actual hyperparameter optimization, in order to minimize training time, two rounds of cross validation were conducted, hence why there are 6 csvs of cross-validation result. Optimization can be run entirely with the script [Optimization_with_Pre_Processing_v3.py](https://github.com/blawton/long-island-sound-gpr/blob/master/Space_and_time/Optimization_with_Pre_Processing_v3.py), but the script must be modified to include all desired options of the parameters: "kernels", and "noise_alpha".
+ 
+
+#### Cross Validation Round I
+Used to determine the exact kernel combination with the candidates (chosen as outlined above):
+1. 1\**2 * RBF(length_scale=[1, 1, 1, 1]) + 1**2 * RationalQuadratic(alpha=1, length_scale=1)
+2. 1\**2 * Matern(length_scale=[1, 1, 1, 1], nu=1.5) + 1**2 * RationalQuadratic(alpha=1, length_scale=1)
+3. 1\**2 * Matern(length_scale=[1, 1, 1, 1], nu=0.5) + 1**2 * RBF(length_scale=[1, 1, 1, 1])
+
+Note: the parameters inside the kernel functions are just sklearns notation for the initial pre-training length scales, which are not incredibly important because a) data was normalzed and b) they are ultimately trained. The results of this training are in the [Results](https://github.com/blawton/long-island-sound-gpr/tree/master/Results) folder as "Optimization_with_Pre_Processing_results_[year].csv". The kernel combination that was settled on in the case of this model was the sum of an anisotropic radial basis function kernel with a rational quadratic kernel. These are two of the most popular kernels as explained in [2] below.
+
+#### Cross Validation Round II
+Used to determine alpha parameter, thus avoiding implementing a whitekernel with variable noise as part of the training process. The results of this training are in the [Results](https://github.com/blawton/long-island-sound-gpr/tree/master/Results) folder as "Parameter_Optimization_time_results_[year]_II.csv" and in this case, results led to the selection of an alpha parameter of .25. Because the output of the GPs were demeaned but not normalized, this corresponds to .25 degrees C. Diminishing returns were seen as alpha increased, suggesting .25 to be a near optimal level of noise.
+
+### Training Model
+Actual parameter values for the kernels chosen in cross validation are obtained in the file [Train_Model.py](https://github.com/blawton/long-island-sound-gpr/blob/master/Space_and_time/Train_Model.py).
+
+### Producing Output
+   Paramters obtained in training are hardcoded (a future version would ideally read these in from results csv files) into the scripts [Geostatistics_Prediction_Dashboard_Heatmaps_3.3.py](https://github.com/blawton/long-island-sound-gpr/blob/master/Space_and_time/Geostatistics_Prediction_Dashboard_Heatmaps_3.3.py) and [Geostatistics_Prediction_Dashboard_Distributions_3.2.py](https://github.com/blawton/long-island-sound-gpr/blob/master/Space_and_time/Geostatistics_Prediction_Dashboard_Distributions_3.2.py) to produce temperature heatmaps and distributions, respectively.
+
 ## 4. Preliminary Results/Graphs
 
 ### Heuristic 1: Summer Averages
@@ -103,12 +106,12 @@ However, we can see that as a result of limits in dataset size, this relationshi
 
 ![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/d5a037a8-c533-4793-a05e-c8280e10d8a6)
 
-This problem is mostly solved if we train the GPR only in the Eastern Sound, however we still see slimmer tails in modeled data:
+This problem is mostly solved if we train the GPR only in the Eastern Sound, however we still see slimmer tails in modeled data. The last row is Inverse Distance Weighting (IDW), which is the original method used for temperature interpolation in the EHSI [5], but fails for continuous time series and will not be further considered:
 
 ![ES_only_model](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig9.png)
 
 ### Conclusion 1: 
-   a. Model must be trained on the Eastern Sound specifically. All remaining heuristics and figures in this readme will be sourced from a model only trained on Eastern Sound data, with eastern sound defined as above in section 2.
+   a. Model parameters must be trained on the Eastern Sound specifically even though the hyperparameters (kernel and noise) of the GPR were chosen based on data in the overall LIS. All remaining heuristics and figures in this readme will be sourced from a model only trained on Eastern Sound data, with eastern sound defined as above in section 2.
    b. For discretely measured data, as a result of short-term spikes, variance of an actual predicted summer average fails to match continuous data, and is too high for predicting habitat suitability. Moreover, eelgrass does not respond just to summer averages, heat stress occurs on as short a timeframe as XX days (see paper)
    c. If instead continuous data is used/modeled, the time series itself should be leveraged to predict habitat suitability, not just a collapsed avg at each location
 
