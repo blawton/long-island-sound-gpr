@@ -17,6 +17,7 @@ It is also worth noting that all the python code here, with the exception of a f
     * Selection Procedure for hyperparameters and kernel
     * Procedure for cleaning input dataset
 4. Preliminary Results/Heatmaps
+5. Proposed Further Direction
 
 ## 1. Introduction: 
 
@@ -137,12 +138,29 @@ A Gaussian process model provides an option for obtaining realistic predictions 
 
 Because it is in our interest to calculate the number of days above various temperature thresholds (described in detail in working paper), we are also interested in modeling continuous time series at locations where we have discrete test data. 
 
-![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig6.jpg)
+![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig6.png)
 
 ### Conclusion 3: 
 Time series where there is existing data have much tighter confidence intervals given proximity to existing data, and thus our modeled time series are a good candidate for a new more comprehensive metric for the temperature threat to eelgrass: days over a Heat Stress Threshold (see working paper for exact terminology)
 
-Our proposed metric for the "credible threat" to eelgrass from temperature stress, as modeled by a gaussian process model for locations within embayments (not in the open sound) can be seen below:
+## 5. Proposed Further Direction
+The results above lead to the following 3 propostitions for advancement in existing temperature modeling for the Long Island Sound:
+1. Using a probabilistic model, in this case a GPR in order to infer fine grained (both spatially and temporily) temperature data for embayments in the long island sound - this process is likely overkill for the open sound, where temperature is dicated more by hydrological phenomena that can be modelled directly with other methods such as [NYHOPS](https://hudson.dl.stevens-tech.edu/maritimeforecast/maincontrol.shtml).
+
+Results from this iteration of output 1 for selected dates:
+
+![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig7a.png)
+
+3. Changing the temperature component of the Eelgrass Habitat Suitability Index (EHSI)[5] to a threshold of days over a given threshold, experimental data on eelgrass phenotypes nearest to the LIS suggests should be around 25 degrees Celcius (see Appendix A). Our model does not yet have enough continuous data to esimate the extrema of days over 25 degrees celcius (continuous monitoring stations are being added by the USGS every year), so we have created the below heatmap for days above 23 degrees, which is not an acutely stressful temperature for eelgrass, but has been associated with die-offs as a summer average.
+
+Results of a heatmap of days over 25 degrees C:
+
+
+   
+5. Incorporating more inputs into the probabilistic model for temperature prediction for a more accurate prediction. Good starting points would be:
+   a. Depth, for which medium grained spatial data currently exists, and super-fine-grained spatial data is currently being gathered using acoustic scattering data as part of the Long Island Sound Mapping and Research Collaborative (LISMaRC), for which ongoing Phase II progress can be seen [here](https://lismap.uconn.edu/phase-ii-data-fadd-draft-2/)
+   b. Hydrological inputs, for example the NYHOPS model linked above
+   c. Meteorological inputs like the ones used in [6]
 
 
 ## References
