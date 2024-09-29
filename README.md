@@ -12,7 +12,7 @@ It is also worth noting that all the python code here, with the exception of a f
 
 ## Table of Contents
 1. Introduction
-2. Current Status
+2. Exact Location of Interest
 3. Production Model
     * Selection Procedure for hyperparameters and kernel
     * Procedure for cleaning input dataset
@@ -25,7 +25,7 @@ The following figure summarizes the spatial region and data locations with which
 
 ![Figure 1](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/Figure%201.jpg)
 
-## 2. Current Status (6/15/2023)
+## 2. Exact Location of Interest
 
 The model for predicting a daily heatmap in the long island sound based on continuous and discrete data from that year can now be considered in production, as the hyperparameters, kernel, and processing of data used as an input have all been chosen. Initial results demonstrate when the model accurately captures the distribution of data at sampling stations and produces a realistic heatmap vs. when it does not. In particular, we are concerned most with the area where eelgrass is almost exclusively restricted to: the Eastern Sound. This window was defined for the purposes of this project by:
 
@@ -34,7 +34,7 @@ The model for predicting a daily heatmap in the long island sound based on conti
 3. lon_min= -72.592354875000
 4. lon_max = -71.811481513000
    
-The threshold for an accurate temperature map in this window appears to be the number of continuos monitoring stations in the sound, which makes sense as without the sample size provided by data coming in at least on a daily basis, a gaussian process is not a well-chosen model.
+The threshold for an accurate temperature map in this window appears to be the number of continuous monitoring stations in the sound, which makes sense as without the sample size provided by data coming in at least on a daily basis, a gaussian process is not a well-chosen model.
 
 ## 3. Production Model
 
@@ -95,27 +95,22 @@ The input dataset, as mentioned in the disclaimer above, consists of a number of
 
    By taking a summer average at every station, we avoid this effect, and in a sense use a model that first uses all available data to predict daily temperatures (more accurately daily morning temperatures because of the averaging in the 6am to 8am window mentioned above), then averages together these daily temperatures to a summer average that can be compared to the summer average of sampled data at any station. We should expect the actual station data to have fatter tails because some of the averages are only averages of 4 data points vs. the 60 or so data points modelled for every station. The results for each year can be found for both the Eastern Sound window and the overall Long Island Sound by looking in the corresponding folder in [June_Graphs](https://github.com/blawton/long-island-sound-gpr/tree/master/Graphs/June_Graphs).
 
-   The graphs show alignment in distribution when looking at the overall LIS in 2019, 2020, and 2021.
+The graphs show alignment in distribution when looking at the overall LIS in 2019, 2020, and 2021. Only 2019 is shown for brevity, but remainder are in appendix B.
 
 ![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/9a188e04-0a1f-489e-a236-0c3e81fa4350)
 
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/12f5b21d-0625-4db1-9c2d-e12b02731aba)
-
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/564b03ba-c027-492f-b7ec-c8f1f9008704)
-
-However, we can see that as a result of limits in dataset size, this relationship falls apart for the eastern sound specfically in all years with the possible exception of 2021:
+However, we can see that as a result of limits in dataset size, this relationship falls apart for the eastern sound specfically when we use a model trained on the overall sound
 
 ![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/d5a037a8-c533-4793-a05e-c8280e10d8a6)
 
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/5bdfdcb3-c57d-4223-94ac-fabb0046db15)
+This problem is mostly solved if we train the GPR only in the Eastern Sound, however we still see slimmer tails in modeled data:
 
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/095dea99-6c04-4355-b4f8-116912e913b5)
+![ES_only_model](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig9.png)
 
 ### Conclusion 1: 
-A summer average of temperature is a poor way to measure the susceptability of eelgrass to temperature stress for the following reasons:
-   a. For discretely measured data, variance of an actual predicted summer average will be high
-   b. If instead continuous data is used/modeled, a lower variance in summer average means that the data loses all meaning in predicting temperature extremes in regions where the eelgrass is most susceptible like the Eastern Sound (as shown by the last 3 figures above)
-   c. Eelgrass does not respond to average, heat stress occurs on as short a timeframe as XX days (see paper)
+   a. Model must be trained on the Eastern Sound specifically. All remaining heuristics and figures in this readme will be sourced from a model only trained on Eastern Sound data, with eastern sound defined as above in section 2.
+   b. For discretely measured data, as a result of short-term spikes, variance of an actual predicted summer average fails to match continuous data, and is too high for predicting habitat suitability. Moreover, eelgrass does not respond just to summer averages, heat stress occurs on as short a timeframe as XX days (see paper)
+   c. If instead continuous data is used/modeled, the time series itself should be leveraged to predict habitat suitability, not just a collapsed avg at each location
 
 ### Heuristic 2: Infering time series at locations with a discrete Source of Truth
 
@@ -168,6 +163,28 @@ Good starting points would be:
    c. Meteorological inputs like the ones used in [6]
 
 A model with more inputs would require a more sophisticated modeling package than Scipy, we suggesting using [GPFlow](https://github.com/GPflow/GPflow) because of its ability to use GPU acceleration and tensorflow to optimize large training operations.
+
+## Appendix A: Suitable Eelgrass Temperatures by Geography
+
+![Optimal Temperature Ranges by Geography](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig13.png)
+
+## Appendix B: All years of modeled vs. incomplete time series summer average temperatures
+
+Entire LIS Model:
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/9a188e04-0a1f-489e-a236-0c3e81fa4350)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/12f5b21d-0625-4db1-9c2d-e12b02731aba)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/564b03ba-c027-492f-b7ec-c8f1f9008704)
+
+Eastern Sound Only Model:
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/d5a037a8-c533-4793-a05e-c8280e10d8a6)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/5bdfdcb3-c57d-4223-94ac-fabb0046db15)
+
+![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/095dea99-6c04-4355-b4f8-116912e913b5)
 
 ## References
 
