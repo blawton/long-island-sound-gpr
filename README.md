@@ -68,9 +68,9 @@ The input dataset, as mentioned in the disclaimer above, consists of a number of
 
 Given that the ultimate purpose of this model is not prediction, but rather using fine-grained modeling to assess shifts in habitat suitability across gaps (time and space) where data is not available, cross validation was performed seperately for each year of available data: 2019, 2020, and 2021. The kernel and amount of noise to use in this model, within the limitations of scikit learn's kernel implementation, were determined by 5 fold (grouped) cross validation.
 
-Cross Validation training and testing sets were grouped by sampling station, because the true test of a gaussian process run over both spatial and time variables is its ability to synthesize an entire time series in each unknown location as opposed to performing time series interpolation on partially missing time series at a location with data that partially exists. From a mathematical perspective, however, in the case of a seperable kernel such as the RBF kernel, either the spatial or time variables will become simple scale factors on the covariances in the other set of variables and the idea of modeling a changing covariance structure over time is impossible without either a clever combination of kernels that allow the capture of interaction effects (the sum of rational quadratic and RBF kernels is intended to account for this).
+Cross Validation training and testing sets were grouped by sampling station, because the true test of a gaussian process run over both spatial and time variables is its ability to synthesize an entire time series in each unknown location as opposed to performing time series interpolation on partially missing time series at a location with data that partially exists. From a mathematical perspective, however, in the case of a seperable kernel such as the RBF kernel, the spatial or temporal variables will become simple scale factors on the covariances in the other set of variables. Modeling a changing covariance structure over time is possible only with a clever combination of kernels that captures interaction effects. The sum of rational quadratic and RBF kernels should account for this effect in this model.
 
-Predictors were also standardized before the training was run to improve convergence of the LFBGS algorithm used to train the Gaussian Process throughout this entire project. The standardization was run within each fold as part of an sklearn pipeline to prevent data leakage from the test set to the train set. 
+Predictors were standardized before the training was run to improve convergence of the LFBGS algorithm used to train the Gaussian Process throughout this entire project. The standardization was run within each fold as part of an sklearn pipeline to prevent data leakage from the test set to the train set. 
 
 For the actual hyperparameter optimization, in order to minimize training time, two rounds of cross validation were conducted, hence why there are 6 csvs of cross-validation result. Optimization can be run entirely with the script [Optimization_with_Pre_Processing_v3.py](https://github.com/blawton/long-island-sound-gpr/blob/master/Space_and_time/Optimization_with_Pre_Processing_v3.py), but the script must be modified to include all desired options of the parameters: "kernels", and "noise_alpha".
  
@@ -81,7 +81,7 @@ Used to determine the exact kernel combination with the candidates (chosen as ou
 2. 1\**2 * Matern(length_scale=[1, 1, 1, 1], nu=1.5) + 1**2 * RationalQuadratic(alpha=1, length_scale=1)
 3. 1\**2 * Matern(length_scale=[1, 1, 1, 1], nu=0.5) + 1**2 * RBF(length_scale=[1, 1, 1, 1])
 
-Note: the parameters inside the kernel functions are just sklearns notation for the initial pre-training length scales, which are not incredibly important because a) data was normalzed and b) they are ultimately trained. The results of this training are in the [Results](https://github.com/blawton/long-island-sound-gpr/tree/master/Results) folder as "Optimization_with_Pre_Processing_results_[year].csv". The kernel combination that was settled on in the case of this model was the sum of an anisotropic radial basis function kernel with a rational quadratic kernel. These are two of the most popular kernels as explained in [2] below.
+Note: the parameters inside the kernel functions are just sklearns notation for the initial pre-training length scales, which are not incredibly important because a) data was normalzed and b) they are ultimately trained. The results of this training are in the [Results](https://github.com/blawton/long-island-sound-gpr/tree/master/Results) folder as "Optimization_with_Pre_Processing_results_[year].csv". The kernel combination that was settled on in the case of this model was the sum of an anisotropic radial basis function kernel with a rational quadratic kernel. These are two of the most popular kernels as explained in [2].
 
 #### Cross Validation Round II
 Used to determine alpha parameter, thus avoiding implementing a whitekernel with variable noise as part of the training process. The results of this training are in the [Results](https://github.com/blawton/long-island-sound-gpr/tree/master/Results) folder as "Parameter_Optimization_time_results_[year]_II.csv" and in this case, results led to the selection of an alpha parameter of .25. Because the output of the GPs were demeaned but not normalized, this corresponds to .25 degrees C. Diminishing returns were seen as alpha increased, suggesting .25 to be a near optimal level of noise.
@@ -95,9 +95,9 @@ Actual parameter values for the kernels chosen in cross validation are obtained 
 ## 4. Preliminary Results/Graphs
 
 ### Heuristic 1: Summer Averages
-   The first test performed to see alignment of underlying data with results was a fairly simple test, namely a comparison of the distribtuion of summer averages at sampling stations. This initial metric was chosen because a simple comparison of distribution of model predicted temperatures at sample locations vs sampled temperatures would result in a difference in population for the two distributions in question. The model produces data on each day of the growing season (July 1st to August 31st) whereas most of the monitoring stations are discretely sampled, meaning they have only 4 datapoints for the growing season, spaced out every 2 weeks. This means that while model-predicted data has an even allocation between continuously-sampled locations and discrete stations, the actual sample data is skewed much more towards the continuous stations.
+   The first test performed to see alignment of underlying data with results was a simple test, the comparison of the distribtuion of summer averages at sampling stations. The model produces data on each day of the growing season (July 1st to August 31st) whereas most of the monitoring stations are discretely sampled, meaning they have only 4 datapoints for the growing season, spaced out every 2 weeks.
 
-   By taking a summer average at every station, we avoid this effect, and in a sense use a model that first uses all available data to predict daily temperatures (more accurately daily morning temperatures because of the averaging in the 6am to 8am window mentioned above), then averages together these daily temperatures to a summer average that can be compared to the summer average of sampled data at any station. We should expect the actual station data to have fatter tails because some of the averages are only averages of 4 data points vs. the 60 or so data points modelled for every station. The results for each year can be found for both the Eastern Sound window and the overall Long Island Sound by looking in the corresponding folder in [June_Graphs](https://github.com/blawton/long-island-sound-gpr/tree/master/Graphs/June_Graphs).
+   We should expect the actual station data to have fatter tails because some of the averages are only averages of 4 data points vs. the 60 or so data points modelled for every station. The results for each year can be found for both the Eastern Sound window and the overall Long Island Sound by looking in the corresponding folder in [June_Graphs](https://github.com/blawton/long-island-sound-gpr/tree/master/Graphs/June_Graphs).
 
 The graphs show alignment in distribution when looking at the overall LIS in 2019, 2020, and 2021. Only 2019 is shown for brevity, but remainder are in Appendix C.
 
@@ -114,26 +114,26 @@ This problem is mostly solved if we train the GPR only in the Eastern Sound, how
 ### Conclusion 1: 
    a. Model parameters must be trained on the Eastern Sound specifically even though the hyperparameters (kernel and noise) of the GPR were chosen based on data in the overall LIS. All remaining heuristics and figures in this readme will be sourced from a model only trained on Eastern Sound data, with eastern sound defined as above in section 2.
    b. For discretely measured data, as a result of short-term spikes, variance of an actual predicted summer average fails to match continuous data, and is too high for predicting habitat suitability. Moreover, eelgrass does not respond just to summer averages, heat stress occurs on as short a timeframe as XX days (see paper)
-   c. If instead continuous data is used/modeled, the time series itself should be leveraged to predict habitat suitability, not just a collapsed avg at each location
+   c. If instead continuous data is used/modeled, the time series itself should be leveraged to predict habitat suitability, not just a collapsed avg at each location. This will be explored further below where spikes in temperature are accounted for by widening of confidence intervals.
 
 ### Heuristic 2: Infering time series at locations with a discrete Source of Truth
 
-Instead of evaluating the spatiotemporal Gaussian Process model here by using distributions of averages (which is besides a dubious approach as the test output is trained on the test data), we can look at the ability of the GPR to model a time series at a location where no temperature data exists and then compare the result to nearby continuous time series that were actually measured at nearby locations. The results for a few example eelgrass stations - White Point (WP), Niantic River (NR), and Jordan Cove (JC) from the map in the Introduction - can be seen below:
+Instead of evaluating the GP by using distributions of averages (which is besides a dubious approach as the test output is trained on the test data), we can look at the ability of the GP to model a time series at a location where no temperature data exists and then compare the result to nearby continuous time series that was actually measured. The results for a few example eelgrass stations - White Point (WP), Niantic River (NR), and Jordan Cove (JC) from the map in the Introduction - can be seen below:
 
 ![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig12a.png)
 
-(results for each year at a fourth location with eelgrass - Millstone Station - in Appendix A showcases the tightening of confidence intervals around nearby discrete measurements).
+(results in Appendix A for each year at a fourth location with eelgrass - Millstone Station - showcase the tightening of confidence intervals around nearby discrete measurements).
 
 ### Conclusion 2: 
 
 The above heuristic demonstrates several advantages of the Gaussian Process approach:
 1. Its ability to create a realistic time series for a location with no existing data
-2. The stability of the predicted time series when compared to locations in the Niantic River, which are further from the open sound and thus warmer
-3. The confidence interval, which gives a verisimilitude of the modeled time series, and shows when we can conclude with 95% certainty that the temperatures at the less-protected White Point station and Jordan Cove station are colder than those of the stations on the Niantic River
+2. The stability of the predicted time series, which deviate believably from continuous time series measured in the Niantic River
+3. The confidence intervals, which estimate verisimilitude of the modeled time series, and in this case show when we can conclude with 95% certainty that the temperatures at the less-protected White Point station and Jordan Cove station are colder than those of the stations on the Niantic River
 
 ### Heuristic 3:
 
-Because it is in our interest to calculate the number of days above various temperature thresholds (described in detail in working paper), we are also interested in modeling continuous time series at locations where we have discrete test data. 
+Because it is in our interest to calculate the number of days above various temperature thresholds (rationale described in working paper), we are also interested in modeling continuous time series at locations even if we already have discrete test data. 
 
 ![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig6.png)
 
@@ -144,14 +144,14 @@ Time series where there is existing data have much tighter confidence intervals 
 The results above lead to the following 3 propostitions for advancement in existing temperature modeling for the Long Island Sound:
 
 ### 1. Probabilistic Model
-Using a probabilistic model, in this case a GPR, in order to infer fine grained (both spatially and temporily) temperature data for embayments in the long island sound. A probabilistic model is preferred because of the ability to create confidence intervals. This process can be restricted to embayments, as in all the work above, because it is likely overkill for the open sound, where temperature is dicated more by hydrological phenomena that can be modelled directly with other methods such as [NYHOPS](https://hudson.dl.stevens-tech.edu/maritimeforecast/maincontrol.shtml).
+Using a probabilistic model, in this case a GP, in order to infer fine-grained (both spatially and temporily) temperature data for embayments in the long island sound. A probabilistic model is preferred because of the ability to create confidence intervals. This process can be restricted to embayments, as in all the work above, because it is likely overkill for the open sound, where temperature is dicated more by hydrological phenomena that can be modelled directly with other methods as in [NYHOPS](https://hudson.dl.stevens-tech.edu/maritimeforecast/maincontrol.shtml).
 
 Results from this iteration of output 1 for selected dates:
 
 ![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig7a.png)
 
 ### 2. Using Days Over Temperature Thresholds Measured on Live Shoots
-Changing the temperature component of the Eelgrass Habitat Suitability Index (EHSI)[5] to a threshold of days over a given threshold, experimental data on eelgrass phenotypes nearest to the LIS suggests should be around 25 degrees Celcius (see Appendix B). Our model does not yet have enough continuous data to esimate the extrema of days over 25 degrees celcius (continuous monitoring stations are being added by the USGS every year), so we have created the below heatmap for days above 23 degrees, which is not an acutely stressful temperature for eelgrass, but has been associated with die-offs as a summer average.
+Changing the temperature component of the Eelgrass Habitat Suitability Index (EHSI)[5] to a score based on days over a threshold is supported by literature cited in the working paper. We infer from experimental data on eelgrass phenotypes nearest to the LIS that around 25 degrees Celcius is a good upper threshold for this region (see Appendix B).
 
 Results of a heatmap of days over 25 degrees C:
 
@@ -160,15 +160,15 @@ Results of a heatmap of days over 25 degrees C:
 ### 3. More inputs to temperature model to understand areas at risk
 
 Good starting points would be:
-   a. Depth, for which medium grained spatial data currently exists, and super-fine-grained spatial data is currently being gathered using acoustic scattering data as part of the Long Island Sound Mapping and Research Collaborative (LISMaRC), for which ongoing Phase II progress can be seen [here](https://lismap.uconn.edu/phase-ii-data-fadd-draft-2/)
+   a. Depth, for which medium grained spatial data currently exists, and super-fine-grained spatial data is currently being gathered using acoustic scattering data as part of the Long Island Sound Mapping and Research Collaborative (LISMaRC). Ongoing Phase II progress can be seen [here](https://lismap.uconn.edu/phase-ii-data-fadd-draft-2/)
    b. Hydrological inputs, for example the NYHOPS model linked above
    c. Meteorological inputs like the ones used in [6]
 
-A model with more inputs would require a more sophisticated modeling package than Scipy, we suggesting using [GPFlow](https://github.com/GPflow/GPflow) because of its ability to use GPU acceleration and tensorflow to optimize large training operations.
+A model with more inputs would require a more sophisticated modeling package than Scipy, I suggest using [GPFlow](https://github.com/GPflow/GPflow) because of its ability to use GPU acceleration and tensorflow to optimize large training operations.
 
 ## Appendix A: Each year of data at Millstone Power Station
 
-Millstone is a particularly interesting case as a result of its proximity to the millstone power station, whose effluent has a small but marked effect on nearby water temperature. The graph shows changes in variance of the confidence interval based on Day of the Year. Moreover, this graph shows how midsummer temperature spikes at nearby temperature stations are contained and in some sense allowed for by the confidence interval, showcasing its utility. Finally the GPR prediction is compared to the former inverse distance weighting of a simple linearly interpolated series, which is near data but less granular and sometimes off by a statistically significant margin:
+Millstone is a particularly interesting case as a result of its proximity to the millstone power station, whose effluent has a small but marked effect on nearby water temperature. The graph shows changes in variance of the confidence interval based on Day of the Year. Moreover, this graph shows how midsummer temperature spikes at nearby temperature stations are contained and in some sense allowed for by the confidence interval, showcasing its utility. Finally the GP prediction is compared to the former inverse distance weighting of a simple linearly interpolated series, which is numerically close to GP-predicted temperatures but less granular and sometimes off by a statistically significant margin:
 
 ![Optimal Temperature Ranges by Geography](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig12b.png)
 
