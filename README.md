@@ -98,7 +98,7 @@ Actual parameter values for the kernels chosen in cross validation are obtained 
 
    By taking a summer average at every station, we avoid this effect, and in a sense use a model that first uses all available data to predict daily temperatures (more accurately daily morning temperatures because of the averaging in the 6am to 8am window mentioned above), then averages together these daily temperatures to a summer average that can be compared to the summer average of sampled data at any station. We should expect the actual station data to have fatter tails because some of the averages are only averages of 4 data points vs. the 60 or so data points modelled for every station. The results for each year can be found for both the Eastern Sound window and the overall Long Island Sound by looking in the corresponding folder in [June_Graphs](https://github.com/blawton/long-island-sound-gpr/tree/master/Graphs/June_Graphs).
 
-The graphs show alignment in distribution when looking at the overall LIS in 2019, 2020, and 2021. Only 2019 is shown for brevity, but remainder are in appendix B.
+The graphs show alignment in distribution when looking at the overall LIS in 2019, 2020, and 2021. Only 2019 is shown for brevity, but remainder are in Appendix C.
 
 ![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/9a188e04-0a1f-489e-a236-0c3e81fa4350)
 
@@ -117,20 +117,18 @@ This problem is mostly solved if we train the GPR only in the Eastern Sound, how
 
 ### Heuristic 2: Infering time series at locations with a discrete Source of Truth
 
-Instead of evaluating the spatiotemporal Gaussian Process model here by using distributions of averages (which is besides a dubious approach as the test output is trained on the test data), we can look at the ability of the GPR to model a time series at a location where no temperature data exists and then compare the result to nearby continuous time series that were actually measured at nearby locations. The results for a few example stations can be seen below:
+Instead of evaluating the spatiotemporal Gaussian Process model here by using distributions of averages (which is besides a dubious approach as the test output is trained on the test data), we can look at the ability of the GPR to model a time series at a location where no temperature data exists and then compare the result to nearby continuous time series that were actually measured at nearby locations. The results for a few example eelgrass stations - White Point (WP), Niantic River (NR), and Jordan Cove (JC) from the map in the Introduction - can be seen below:
 
-![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig12c.png)
+![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig12a.png)
 
-The above graphs of inferred temperature at White Point (WP), Niantic River (NR), and Jordan Cove (JC) eelgrass stations, shown on the map in the Introduction, demonstrate several advantages of the Gaussian Process approach:
-1. Its ability to create a realistic time series for a location with no existing data
-2. The stability of the predicted time series when compared to locations in the Niantic River, which are further from the open sound and thus warmer
-3. The confidence interval, which gives a verisimilitude of the modeled time series, and shows when we can conclude with 95% certainty that the temperature at the less-protected White Point station and Jordan Cove stations are colder than that of the stations on the Niantic River
-
-(White Point itself is an interesting use case of the model given its proximity to the Millstone Power Plant, which emits effluent at a consistently monitored temperature. Using this model for temperature nearest to actual eelgrass beds, the susceptibility of the eelgrass to the effluent from Millstone could be inferred).
+(results for each year at a fourth location with eelgrass - Millstone Station - in Appendix A showcases the tightening of confidence intervals around nearby discrete measurements).
 
 ### Conclusion 2: 
 
-A Gaussian process model provides an option for obtaining realistic predictions that are spatial near existing measurements, yet may differ by a statistically significant margin from those existing measurements, as inferred using the covariance structure learned from training data.
+The above heuristic demonstrates several advantages of the Gaussian Process approach:
+1. Its ability to create a realistic time series for a location with no existing data
+2. The stability of the predicted time series when compared to locations in the Niantic River, which are further from the open sound and thus warmer
+3. The confidence interval, which gives a verisimilitude of the modeled time series, and shows when we can conclude with 95% certainty that the temperatures at the less-protected White Point station and Jordan Cove station are colder than those of the stations on the Niantic River
 
 ### Heuristic 3:
 
@@ -152,7 +150,7 @@ Results from this iteration of output 1 for selected dates:
 ![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig7a.png)
 
 ### 2. Using Days Over Temperature Thresholds Measured on Live Shoots
-Changing the temperature component of the Eelgrass Habitat Suitability Index (EHSI)[5] to a threshold of days over a given threshold, experimental data on eelgrass phenotypes nearest to the LIS suggests should be around 25 degrees Celcius (see Appendix A). Our model does not yet have enough continuous data to esimate the extrema of days over 25 degrees celcius (continuous monitoring stations are being added by the USGS every year), so we have created the below heatmap for days above 23 degrees, which is not an acutely stressful temperature for eelgrass, but has been associated with die-offs as a summer average.
+Changing the temperature component of the Eelgrass Habitat Suitability Index (EHSI)[5] to a threshold of days over a given threshold, experimental data on eelgrass phenotypes nearest to the LIS suggests should be around 25 degrees Celcius (see Appendix B). Our model does not yet have enough continuous data to esimate the extrema of days over 25 degrees celcius (continuous monitoring stations are being added by the USGS every year), so we have created the below heatmap for days above 23 degrees, which is not an acutely stressful temperature for eelgrass, but has been associated with die-offs as a summer average.
 
 Results of a heatmap of days over 25 degrees C:
 
@@ -167,11 +165,17 @@ Good starting points would be:
 
 A model with more inputs would require a more sophisticated modeling package than Scipy, we suggesting using [GPFlow](https://github.com/GPflow/GPflow) because of its ability to use GPU acceleration and tensorflow to optimize large training operations.
 
-## Appendix A: Suitable Eelgrass Temperatures by Geography
+## Appendix A: Each year of data at Millstone Power Station
+
+Millstone is a particularly interesting case as a result of its proximity to the millstone power station, whose effluent has a small but marked effect on nearby water temperature. The graph shows changes in variance of the confidence interval based on Day of the Year. Moreover, this graph shows how midsummer temperature spikes at nearby temperature stations are contained and in some sense allowed for by the confidence interval, showcasing its utility. Finally the GPR prediction is compared to the former inverse distance weighting of a simple linearly interpolated series, which is near data but less granular and sometimes off by a statistically significant margin:
+
+![Optimal Temperature Ranges by Geography](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig12b.png)
+
+## Appendix B: Suitable Eelgrass Temperatures by Geography
 
 ![Optimal Temperature Ranges by Geography](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig13.png)
 
-## Appendix B: All years of modeled vs. incomplete time series summer average temperatures
+## Appendix C: All years of modeled vs. incomplete time series summer average temperatures
 
 Entire LIS Model:
 
