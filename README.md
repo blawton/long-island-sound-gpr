@@ -21,9 +21,10 @@ It is also worth noting that all the python code here, with the exception of a f
 
 ## 1. Introduction: 
 
-The following figure summarizes the spatial region and data locations with which this model is concerned. In the left map (a), we see the temperature sampling locations, a mix of continuous and discrete stations, and in the right map (b) we see the distribution of eelgrass beds in the region of interest and the sampling stations where shoot counts and biomass are currently measured in the Long Island Sound.
+The following figure summarizes the spatial region and data locations with which this model is concerned. In the left map (a), we see the temperature sampling locations, a mix of continuous and discrete stations, and in the right map (b), we see the distribution of eelgrass beds in the region of interest and the sampling stations where shoot counts and biomass are currently measured in the Long Island Sound.
 
 ![Figure 1](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/Figure%201.jpg)
+Note: Eelgrass bed imagery is assembled from a shapefile of aerial survey data from 2017 ([USFWS](https://longislandsoundstudy.net/ecosystem-target-indicators/eelgrass-extent/)). As part of my ORISE, in a collaboration with [Nate Merrill](https://github.com/Nateme16), I was able to estimate eelgrass beds using more recent satellite imagery, however that is outside the scope of this repo.
 
 ## 2. Exact Location of Interest
 
