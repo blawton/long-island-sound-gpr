@@ -1,4 +1,6 @@
 # long-island-sound-gpr
+NOTE: For updated model that uses a Sparse Variational Gaussian Process, see my repo: water_temp_svgp
+
 Preliminary python code and parameter optimization for forthcoming paper supported by my ORISE fellowship.  General approach is a Gaussian Process Regression of temperatures within embayments of the Long Island Sound, partially inspired by other GPR applications to water quality parameters, such as [1] and [6]. The goal of this model is to have fine-grained (within embayment) temperature data in order to assess susceptibility of eelgrass habitats to warm temperatures and climate change.
 
 ## Acknowledgement of Support
