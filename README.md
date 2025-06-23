@@ -1,7 +1,7 @@
 # long-island-sound-gpr
-NOTE: For updated model that uses a Sparse Variational Gaussian Process, see my repo: water_temp_svgp
+NOTE: FOR UPDATED MODEL THAT USES A SPARSE VARIATIONAL GAUSSIAN PROCESS AND INCORPORATES SATELLITE SEA SURFACE TEMPERATURE DATA, SEE MY REPO: [water_temp_svgp](https://github.com/blawton/water_temp_svgp)
 
-Preliminary python code and parameter optimization for forthcoming paper supported by my ORISE fellowship.  General approach is a Gaussian Process Regression of temperatures within embayments of the Long Island Sound, partially inspired by other GPR applications to water quality parameters, such as [1] and [6]. The goal of this model is to have fine-grained (within embayment) temperature data in order to assess susceptibility of eelgrass habitats to warm temperatures and climate change.
+This repo has an approach to Gaussian Process Regression of temperatures within embayments of the Long Island Sound, partially inspired by other GPR applications to water quality parameters, such as [1] and [6]. The goal of this model is to have fine-grained (within embayment) temperature data in order to assess susceptibility of eelgrass habitats to warm temperatures and climate change.
 
 ## Acknowledgement of Support
 This research was supported in part by an appointment to the U.S. Environmental Protection Agency (EPA) Research Participation Program administered by the Oak Ridge Institute for Science and Education (ORISE) through an interagency agreement between the U.S. Department of Energy (DOE) and the U.S. Environmental Protection Agency. ORISE is managed by ORAU under DOE contract number DE-SC0014664. All opinions expressed herein are the author's and do not necessarily reflect the policies and views of US EPA, DOE, or ORAU/ORISE.
@@ -96,29 +96,7 @@ Actual parameter values for the kernels chosen in cross validation are obtained 
 
 ## 4. Preliminary Results/Graphs
 
-### Heuristic 1: Summer Averages
-   The first test performed to see alignment of underlying data with results was a simple test, the comparison of the distribtuion of summer averages at sampling stations. The model produces data on each day of the growing season (July 1st to August 31st) whereas most of the monitoring stations are discretely sampled, meaning they have only 4 datapoints for the growing season, spaced out every 2 weeks.
-
-   We should expect the actual station data to have fatter tails because some of the averages are only averages of 4 data points vs. the 60 or so data points modelled for every station. The results for each year can be found for both the Eastern Sound window and the overall Long Island Sound by looking in the corresponding folder in [June_Graphs](https://github.com/blawton/long-island-sound-gpr/tree/master/Graphs/June_Graphs).
-
-The graphs show alignment in distribution when looking at the overall LIS in 2019, 2020, and 2021. Only 2019 is shown for brevity, but remainder are in Appendix C.
-
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/9a188e04-0a1f-489e-a236-0c3e81fa4350)
-
-However, we can see that as a result of limits in dataset size, this relationship falls apart for the eastern sound specfically when we use a model trained on the overall sound
-
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/d5a037a8-c533-4793-a05e-c8280e10d8a6)
-
-This problem is mostly solved if we train the GPR only in the Eastern Sound, however we still see slimmer tails in modeled data. The last row is Inverse Distance Weighting (IDW), which is the original method used for temperature interpolation in the EHSI [5], but fails for continuous time series and will not be further considered:
-
-![ES_only_model](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig9.png)
-
-### Conclusion 1: 
-   a. Model parameters must be trained on the Eastern Sound specifically even though the hyperparameters (kernel and noise) of the GPR were chosen based on data in the overall LIS. All remaining heuristics and figures in this readme will be sourced from a model only trained on Eastern Sound data, with eastern sound defined as above in section 2.
-   b. For discretely measured data, as a result of short-term spikes, variance of an actual predicted summer average fails to match continuous data, and is too high for predicting habitat suitability. Moreover, eelgrass does not respond just to summer averages, heat stress occurs on as short a timeframe as XX days (see paper)
-   c. If instead continuous data is used/modeled, the time series itself should be leveraged to predict habitat suitability, not just a collapsed avg at each location. This will be explored further below where spikes in temperature are accounted for by widening of confidence intervals.
-
-### Heuristic 2: Infering time series at locations with a discrete Source of Truth
+### Test 1: Infering time series at locations with a discrete Source of Truth
 
 Instead of evaluating the GP by using distributions of averages (which is besides a dubious approach as the test output is trained on the test data), we can look at the ability of the GP to model a time series at a location where no temperature data exists and then compare the result to nearby continuous time series that was actually measured. The results for a few example eelgrass stations - White Point (WP), Niantic River (NR), and Jordan Cove (JC) from the map in the Introduction - can be seen below:
 
@@ -126,20 +104,20 @@ Instead of evaluating the GP by using distributions of averages (which is beside
 
 (results in Appendix A for each year at a fourth location with eelgrass - Millstone Station - showcase the tightening of confidence intervals around nearby discrete measurements).
 
-### Conclusion 2: 
+### Conclusion 1: 
 
 The above heuristic demonstrates several advantages of the Gaussian Process approach:
 1. Its ability to create a realistic time series for a location with no existing data
 2. The stability of the predicted time series, which deviate believably from continuous time series measured in the Niantic River
 3. The confidence intervals, which estimate verisimilitude of the modeled time series, and in this case show when we can conclude with 95% certainty that the temperatures at the less-protected White Point station and Jordan Cove station are colder than those of the stations on the Niantic River
 
-### Heuristic 3:
+### Test 2:
 
 Because it is in our interest to calculate the number of days above various temperature thresholds (rationale described in working paper), we are also interested in modeling continuous time series at locations even if we already have discrete test data. 
 
 ![continuous_time_series_modeling](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig6.png)
 
-### Conclusion 3: 
+### Conclusion 2: 
 Time series where there is existing data have much tighter confidence intervals given proximity to existing data, and thus our modeled time series are a good candidate for a new more comprehensive metric for the temperature threat to eelgrass: days over a Heat Stress Threshold (see working paper for exact terminology)
 
 ## 5. Proposed Further Direction
@@ -177,24 +155,6 @@ Millstone is a particularly interesting case as a result of its proximity to the
 ## Appendix B: Suitable Eelgrass Temperatures by Geography
 
 ![Optimal Temperature Ranges by Geography](https://github.com/blawton/long-island-sound-gpr/blob/master/Figures_for_paper/fig13.png)
-
-## Appendix C: All years of modeled vs. incomplete time series summer average temperatures
-
-Entire LIS Model:
-
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/9a188e04-0a1f-489e-a236-0c3e81fa4350)
-
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/12f5b21d-0625-4db1-9c2d-e12b02731aba)
-
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/564b03ba-c027-492f-b7ec-c8f1f9008704)
-
-Eastern Sound Only Model:
-
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/d5a037a8-c533-4793-a05e-c8280e10d8a6)
-
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/5bdfdcb3-c57d-4223-94ac-fabb0046db15)
-
-![download](https://github.com/blawton/long-island-sound-gpr/assets/46683509/095dea99-6c04-4355-b4f8-116912e913b5)
 
 ## References
 
